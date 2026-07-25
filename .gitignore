@@ -1,0 +1,25 @@
+# Local workspaces and product data
+workspace/
+products/
+outputs/
+jobs/
+logs/
+
+# Secrets and local environments
+.env
+.env.*
+.venv/
+venv/
+
+# Python and tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
