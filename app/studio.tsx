@@ -15,11 +15,9 @@ import {
   Clock3,
   Copy,
   ExternalLink,
-  FileJson2,
   FolderOpen,
   HardDrive,
   ImageIcon,
-  Layers3,
   ListChecks,
   LoaderCircle,
   Maximize2,
@@ -27,8 +25,6 @@ import {
   Search,
   Settings2,
   ShieldAlert,
-  Sparkles,
-  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -139,6 +135,7 @@ export function Studio() {
   const [tweakInstruction, setTweakInstruction] = useState("");
   const [busy, setBusy] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
 
@@ -303,6 +300,10 @@ export function Studio() {
     results.find((bundle) => bundle.result.result_id === activeResultId) ??
     results[0] ??
     null;
+
+  useEffect(() => {
+    setDescriptionExpanded(false);
+  }, [activeResultId]);
 
   const openWorkspace = async (action: "pick" | "open", selectedPath?: string) => {
     setBusy("workspace");
@@ -525,12 +526,9 @@ export function Studio() {
     <main className="studio-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">
-            <Sparkles size={20} />
-          </span>
           <span>
             <strong>Etsy Listing Studio</strong>
-            <small>Local evidence, thoughtful copy</small>
+            <small>Local workspace</small>
           </span>
         </div>
 
@@ -540,14 +538,14 @@ export function Studio() {
             onClick={() => setCenterView("evidence")}
             type="button"
           >
-            Product review
+            Review
           </button>
           <button
             className={centerView === "results" ? "nav-item is-active" : "nav-item"}
             onClick={() => setCenterView("results")}
             type="button"
           >
-            Copy results <span>{activeProduct?.results.length ?? 0}</span>
+            Listings <span>{activeProduct?.results.length ?? 0}</span>
           </button>
         </nav>
 
@@ -570,10 +568,9 @@ export function Studio() {
         <aside className="library-panel">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">Active root</span>
+              <span className="eyebrow">Workspace</span>
               <h2>Product library</h2>
             </div>
-            <FolderOpen size={20} />
           </div>
 
           <button
@@ -712,7 +709,6 @@ export function Studio() {
               })
             ) : (
               <div className="empty-list">
-                <FolderOpen size={22} />
                 No matching products.
               </div>
             )}
@@ -1061,18 +1057,24 @@ export function Studio() {
                           )}
                         </span>
                         <div>
-                          <button
-                            onClick={() => void reviewResult("approved")}
-                            type="button"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => void reviewResult("rejected")}
-                            type="button"
-                          >
-                            Reject
-                          </button>
+                          {activeResult.review?.status !== "approved" && (
+                            <button
+                              onClick={() => void reviewResult("approved")}
+                              type="button"
+                            >
+                              Approve
+                            </button>
+                          )}
+                          {activeResult.review?.status !== "rejected" && (
+                            <button
+                              onClick={() => void reviewResult("rejected")}
+                              type="button"
+                            >
+                              {activeResult.review?.status === "approved"
+                                ? "Mark rejected"
+                                : "Reject"}
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1130,9 +1132,7 @@ export function Studio() {
                         </div>
                         <div className="tag-list">
                           {activeResult.result.listing.tags.map((tagValue) => (
-                            <span key={tagValue}>
-                              <Tag size={11} /> {tagValue}
-                            </span>
+                            <span key={tagValue}>{tagValue}</span>
                           ))}
                         </div>
                       </div>
@@ -1151,7 +1151,26 @@ export function Studio() {
                             <Copy size={13} /> Copy
                           </button>
                         </div>
-                        <p>{activeResult.result.listing.description}</p>
+                        <div
+                          className={`description-content ${
+                            descriptionExpanded ? "is-expanded" : ""
+                          }`}
+                        >
+                          <p>{activeResult.result.listing.description}</p>
+                        </div>
+                        {activeResult.result.listing.description.length > 520 && (
+                          <button
+                            className="description-toggle"
+                            onClick={() =>
+                              setDescriptionExpanded((current) => !current)
+                            }
+                            type="button"
+                          >
+                            {descriptionExpanded
+                              ? "Collapse description"
+                              : "Show full description"}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1339,14 +1358,24 @@ export function Studio() {
                   </>
                 ) : (
                   <div className="empty-results">
-                    <BookOpenText size={34} />
-                    <h2>No copywriting result yet</h2>
+                    <h2>
+                      {activeProduct.results.length
+                        ? "Loading copywriting history"
+                        : "No copywriting result yet"}
+                    </h2>
                     <p>
-                      Queue this product, then ask Codex to process queued jobs.
+                      {activeProduct.results.length
+                        ? "Reading the saved local result versions."
+                        : "Queue this product, then ask Codex to process queued jobs."}
                     </p>
-                    <button onClick={() => setCenterView("evidence")} type="button">
-                      Return to product review
-                    </button>
+                    {!activeProduct.results.length && (
+                      <button
+                        onClick={() => setCenterView("evidence")}
+                        type="button"
+                      >
+                        Return to product review
+                      </button>
+                    )}
                   </div>
                 )}
               </section>
@@ -1354,7 +1383,6 @@ export function Studio() {
           </section>
         ) : (
           <section className="product-workspace empty-workspace">
-            <FolderOpen size={34} />
             <h2>Choose your product root</h2>
             <p>Studio will recursively find every folder with metadata.json.</p>
             <button onClick={() => setWorkspaceDialog(true)} type="button">
@@ -1366,10 +1394,9 @@ export function Studio() {
         <aside className="job-builder">
           <div className="builder-heading">
             <div>
-              <span className="eyebrow">Explicit Codex handoff</span>
+              <span className="eyebrow">Local jobs</span>
               <h2>Copywriting queue</h2>
             </div>
-            <FileJson2 size={22} />
           </div>
 
           <div className="selected-summary">
@@ -1407,7 +1434,7 @@ export function Studio() {
           <div className="task-list">
             <article className="is-enabled">
               <span className="task-icon task-copy">
-                <Sparkles size={18} />
+                <BookOpenText size={18} />
               </span>
               <div>
                 <strong>Listing copy</strong>
@@ -1420,18 +1447,8 @@ export function Studio() {
                 <ImageIcon size={18} />
               </span>
               <div>
-                <strong>Main showcase images</strong>
-                <small>Prepared in the schema · coming later</small>
-              </div>
-              <span className="coming-soon">Later</span>
-            </article>
-            <article className="is-disabled">
-              <span className="task-icon task-variation">
-                <Layers3 size={18} />
-              </span>
-              <div>
-                <strong>Variation images</strong>
-                <small>Prepared in the schema · coming later</small>
+                <strong>Image workflows</strong>
+                <small>Main showcase and variation images are coming later</small>
               </div>
               <span className="coming-soon">Later</span>
             </article>
@@ -1655,9 +1672,7 @@ export function Studio() {
           </section>
 
           <div className="codex-prompt">
-            <span>
-              <Sparkles size={14} /> Next step
-            </span>
+            <span>Next step</span>
             <strong>“Process my queued jobs.”</strong>
           </div>
         </aside>
@@ -1679,9 +1694,6 @@ export function Studio() {
             >
               <X size={17} />
             </button>
-            <span className="dialog-icon">
-              <FolderOpen size={24} />
-            </span>
             <h2 id="workspace-dialog-title">Choose your product root</h2>
             <p>
               Studio recursively finds every product folder containing a

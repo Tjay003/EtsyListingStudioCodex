@@ -23,6 +23,13 @@ The copywriting loop is in scope. Image generation, cloud storage, Etsy publishi
 - Review versions, approve or reject them, and queue targeted field tweaks without rescanning.
 - Move deleted products to recoverable Studio trash and restore them when the original path is free.
 
+## Visual Direction
+
+- Use a restrained neo-minimal interface: neutral surfaces, crisp grid lines, compact spacing, clear hierarchy, and one controlled accent color.
+- Favor functional density over decorative cards, gradients, glass effects, oversized rounding, display-serif styling, or ornamental AI motifs.
+- Use Lucide icons only when they clarify an action or status. Never use emoji as interface icons, and omit an icon when it adds no information.
+- Keep the handcrafted CSS system; Tailwind is not required for this project.
+
 ## Local Storage
 
 Each product folder may contain:
