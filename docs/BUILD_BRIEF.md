@@ -1,137 +1,106 @@
 # Build Brief
 
 ## Vision
-Create a local product listing workspace that combines a practical UI with Codex's ability to inspect files, reason about incomplete product evidence, write high-quality listing copy, and direct image generation.
 
-The user should spend time making product decisions, not maintaining a large AI prompt configuration system.
+Etsy Listing Studio is a Windows-first, local-only workflow for reviewing supplier evidence and producing conservative Etsy copy with Codex:
 
-## Why This Project Exists
-The original Etsy automation application proved the workflow but accumulated complexity because it needed smaller API models to behave consistently. This project explores a different operating model:
+`Select root → Review products → Queue jobs → Ask Codex to process → Review, tweak, and approve`
 
-- Codex acts as the skilled operator.
-- The UI captures user intent and displays local results.
-- Structured job files connect the UI and Codex.
-- Product images and metadata remain local.
-- Defaults are strong, but individual products can be customized.
+The UI owns selection, local state, progress, and review. Codex performs the high-judgment writing only after an explicit user request.
 
-## Primary User
-An Etsy seller processing many supplier-sourced products who needs:
+## Current Milestone
 
-- Fast product intake from existing local folders or scraped metadata
-- Reliable product evidence review
-- Etsy-ready titles, descriptions, categories, and 13 useful tags
-- Conservative handling of unsupported details
-- Batch variation images with consistent treatment
-- Several strong main showcase images
-- Easy reference-image selection
-- Targeted copy and image tweaks
-- Clear progress, errors, cancellation, and completion notifications
+The copywriting loop is in scope. Image generation, cloud storage, Etsy publishing, and automatic Codex invocation are not.
 
-## Proposed V1 Experience
+- Select one active product root with a Windows picker, pasted path, or recent-workspace shortcut.
+- Recursively discover folders containing `metadata.json` at any category depth.
+- Normalize current scraper metadata while exposing old embedded results as read-only Legacy data.
+- Show all indexed source images, missing/unindexed warnings, specs, variations, source links, and product notes.
+- Persist product identity and review state in `.etsy-studio.json` without modifying source metadata or images.
+- Queue one copywriting job per product under a shared batch.
+- Process jobs sequentially through `$process-etsy-jobs`.
+- Save immutable results in `studio_outputs/copywriting/vNNNN/`.
+- Review versions, approve or reject them, and queue targeted field tweaks without rescanning.
+- Move deleted products to recoverable Studio trash and restore them when the original path is free.
 
-### Library
-- Choose a local workspace folder.
-- Discover product folders and supported metadata files.
-- Show each product with source URL, images, variations, status, and outputs.
-- Allow select, reject, delete, and bulk selection.
+## Local Storage
 
-### Product Review
-- Inspect all source images without opening browser tabs.
-- Mark the preferred product reference image.
-- Review extracted source facts and mark uncertain information.
-- Add concise user notes for special handling.
-
-### Job Builder
-- Choose Copywriting, Main Images, Variation Images, or a combination.
-- Use strong defaults with optional per-product overrides.
-- Set image count, reference, staging direction, and custom instruction.
-- Write a versioned job manifest under `jobs/queued/`.
-
-### Codex Processing
-- Read queued manifests and local product evidence.
-- Update status as work progresses.
-- Produce structured copywriting output.
-- Generate or edit images when an available Codex image workflow supports the request.
-- Preserve parent/reference lineage for every generated image.
-- Write actionable failures without discarding successful partial work.
-
-### Review
-- Preview listing copy and generated images.
-- Tweak only the selected copy fields or one selected image.
-- Save manual price and approval state.
-- Keep prior results instead of replacing them silently.
-
-## Initial Local Contracts
-
-Suggested folders:
+Each product folder may contain:
 
 ```text
-workspace/
-  products/
-  jobs/
-    queued/
-    processing/
-    completed/
-    failed/
-  outputs/
+product-folder/
+  metadata.json
+  .etsy-studio.json
+  studio_outputs/
+    copywriting/
+      v0001/
+        listing.json
+        listing.txt
+        review.json
+```
+
+Workspace control data is stored beneath `.etsy-listing-studio/`:
+
+```text
+.etsy-listing-studio/
+  jobs/{queued,processing,completed,failed,cancelled}/
+  batches/
+  cache/
+  settings/
+  staging/
   logs/
+  trash/
 ```
 
-Suggested job shape:
+Studio-owned directories are excluded from discovery. Lifecycle writes are atomic. Successful child jobs remain intact when another job fails or cancellation is requested.
 
-```json
-{
-  "schema_version": 1,
-  "job_id": "generated-id",
-  "created_at": "ISO-8601 timestamp",
-  "products": ["product-folder"],
-  "tasks": {
-    "copywriting": true,
-    "main_images": {
-      "enabled": true,
-      "count": 4
-    },
-    "variation_images": {
-      "enabled": true,
-      "mode": "each_selected_variation"
-    }
-  },
-  "preferences": {
-    "quality": "high",
-    "image_aspect_ratio": "1:1",
-    "custom_instruction": ""
-  }
-}
+## Workspace Copywriting Memory
+
+Each active product root may store copywriting settings at:
+
+```text
+.etsy-listing-studio/settings/copywriting.json
 ```
 
-This contract is a starting point, not a promise. Validate it against the first real UI workflow before expanding it.
+These settings are workspace-scoped. Switching product roots switches the brand voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer. A fresh root starts with default Nookform-oriented settings until the user edits and saves them in the Studio UI.
+
+## Product Identity and Duplicates
+
+`ProductSnapshotV1` gives each physical folder a stable UUID. Logical duplicates are grouped by `source_domain + source_product_id`, but displayed separately because their metadata or images may differ. The job builder blocks queueing two snapshots from the same logical source in one batch.
 
 ## Copywriting Standard
-- Use explicit source facts and clearly scoped visual observations.
-- Do not invent material, dimensions, capacity, compatibility, performance, production, safety, or environmental claims.
-- Titles must be natural, Etsy-compatible, and avoid supplier fragments or unnecessary sizes.
-- Use up to 13 distinct, relevant tags at Etsy-compatible lengths.
-- Descriptions should read naturally, then present supported details in a scannable format.
-- Avoid filler and omit empty or uncertain detail fields.
-- Flag conflicts for the user instead of choosing one silently.
-- Keep final price manual.
 
-## Image Standard
-- Preserve the exact product identity, shape, color, hardware, texture, and structural details.
-- Use the strongest selected reference, not automatically the first image.
-- Process every selected variation source independently.
-- Use staging that fits the detected product category, such as furniture in an appropriate room or kitchen tools in a kitchen.
-- Main images should showcase the product; variation images should prioritize consistency and accuracy.
-- Append tweaked outputs with lineage instead of overwriting originals.
+- Follow the official Etsy search guidance summarized in `.agents/skills/process-etsy-jobs/references/etsy-search-copywriting.md`.
+- Follow the active workspace settings from `.etsy-listing-studio/settings/copywriting.json`, including the saved shop voice and required policy footer.
+- Treat title, description, tags, category, and verified Etsy attributes as complementary signals rather than repeating the same phrase everywhere.
+- Separate supplier facts, printed-image facts, visual observations, user instructions, conflicts, and unknowns.
+- Never infer material, measurements, capacity, compatibility, safety, performance, package contents, or origin from appearance.
+- Use a clear title no longer than 140 characters and normally fewer than 15 words.
+- Produce up to 13 useful, non-duplicate tags, each no longer than 20 characters.
+- Write a natural opening followed by supported, scannable details.
+- Choose a defensible category and leave final price manual.
+- Surface possible IP or trademark issues as visible, non-blocking warnings.
+- Omit unknowns and disputed claims instead of guessing.
 
-## Explicit Non-Goals For V1
-- Hosted multi-user storage
-- Marketplace insights
-- Fully autonomous browser publishing to Etsy
-- Permanent cloud image storage
-- A giant configurable prompt editor
-- Automatic unattended invocation of the Codex desktop task
+Every result contains an evidence ledger, inspected-image list, conflicts, omitted fields, warnings, validation issues, and parent lineage. Deterministic validation runs before an immutable version is committed.
 
-## First Build Milestone
-Build a local read-only product library and job-manifest creator using fixture product folders. Do not implement AI generation until the product selection, reference selection, and job request flow feel correct.
+## Processing Boundary
 
+The webpage does not claim to invoke the current Codex task. It only writes structured local jobs and watches status files. The user explicitly invokes `$process-etsy-jobs` or asks “Process my queued jobs.” Cooperative cancellation is checked between processing stages.
+
+Targeted tweaks reuse the parent evidence ledger, do not rescan images, change only selected fields, and create a new version linked by `parent_result_id`.
+
+## Security and Testing
+
+All application routes bind to loopback and validate paths against the active root. Traversal and symlink escapes are rejected. Automated tests use temporary anonymized fixtures and fake deterministic results; they never alter the real scraper library or make paid model calls.
+
+## Future Image Work
+
+Contracts may later support main and variation image tasks. When implemented, product fidelity, per-variation processing, square output, reference lineage, and non-destructive versioning remain mandatory. The current UI labels these workflows as unavailable.
+
+## Legacy Reference
+
+The previous project is a source of ideas, not code to copy wholesale:
+
+- Repository: `..\EtsyListingsAutomation`
+- Copywriting checkpoint: branch `codex/copywriting-refactor-v2`, commit `66658f8`

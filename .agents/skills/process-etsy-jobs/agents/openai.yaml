@@ -1,0 +1,6 @@
+interface:
+  display_name: "Process Etsy Jobs"
+  short_description: "Process queued Etsy copywriting jobs safely"
+  default_prompt: "Use $process-etsy-jobs to process my queued Etsy copywriting jobs."
+policy:
+  allow_implicit_invocation: true

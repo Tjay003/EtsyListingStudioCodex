@@ -1,9 +1,9 @@
 # Local workspaces and product data
-workspace/
-products/
-outputs/
-jobs/
-logs/
+/workspace/
+/products/
+/outputs/
+/jobs/
+/logs/
 
 # Secrets and local environments
 .env
@@ -17,9 +17,18 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
+# Web application build output
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+pnpm-debug.log*
+.etsy-studio.local.json
+.studio-launch.log
+.studio-launch.err.log
+
 # Editor and OS files
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
