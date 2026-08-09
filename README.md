@@ -32,7 +32,7 @@ Out of scope for the current milestone:
 | **Windows** | 10 or 11 | Windows-first; macOS/Linux untested |
 | **Node.js** | ≥ 22.13.0 | [nodejs.org](https://nodejs.org) |
 | **pnpm** | 11.9.0 | `npm install -g pnpm` |
-| **Google Gemini Codex** (desktop) | latest | Required for AI job processing |
+| **Codex** (Google DeepMind desktop app) | latest | Required for AI job processing |
 
 > **What is a "product root"?** This app reads product folders that contain a `metadata.json` file. If you don't have a scraper that generates these, you can create test folders manually — see [Local Data Layout](#local-data-layout) below for the expected structure.
 
