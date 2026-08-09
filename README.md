@@ -25,18 +25,39 @@ Out of scope for the current milestone:
 - Automatic background invocation of Codex or another AI agent from the browser UI.
 - Modifying scraper-owned source files.
 
-## Start
+## Prerequisites
 
-Double-click `Start Etsy Listing Studio.cmd`. It installs dependencies when needed, starts the server on `http://127.0.0.1:3000`, and opens the app.
+| Requirement | Version | Notes |
+|---|---|---|
+| **Windows** | 10 or 11 | Windows-first; macOS/Linux untested |
+| **Node.js** | ≥ 22.13.0 | [nodejs.org](https://nodejs.org) |
+| **pnpm** | 11.9.0 | `npm install -g pnpm` |
+| **Google Gemini Codex** (desktop) | latest | Required for AI job processing |
 
-Or run:
+> **What is a "product root"?** This app reads product folders that contain a `metadata.json` file. If you don't have a scraper that generates these, you can create test folders manually — see [Local Data Layout](#local-data-layout) below for the expected structure.
+
+## Quick Start
+
+**Option A — Double-click launcher (easiest):**
+
+```
+Start Etsy Listing Studio.cmd
+```
+
+It installs dependencies when needed, starts the server on `http://127.0.0.1:3000`, and opens the app automatically.
+
+**Option B — Command line:**
 
 ```powershell
+git clone https://github.com/Tjay003/EtsyListingStudioCodex.git
+cd EtsyListingStudioCodex
 pnpm install
 pnpm dev
 ```
 
-Production-style local run:
+Then open `http://127.0.0.1:3000` in your browser.
+
+**Production-style local run:**
 
 ```powershell
 pnpm build
@@ -44,6 +65,16 @@ pnpm start
 ```
 
 Both `dev` and `start` bind to `127.0.0.1`.
+
+## Using with Codex
+
+1. Open this repository as a **workspace** in the Codex desktop app.
+2. Start the Studio and select a product root.
+3. Queue copywriting jobs in the UI.
+4. Tell Codex: **"Process my queued jobs"** (or type `$process-etsy-jobs`).
+5. Codex reads the local job files, writes results, and the Studio picks them up automatically.
+
+The Codex skills in `.agents/skills/` are auto-discovered when this repo is your active workspace.
 
 ## Operator Workflow
 
@@ -136,6 +167,7 @@ Do:
 - Write one clear Etsy-ready title within 140 characters, normally under 15 words.
 - Produce up to 13 useful tags, each 20 characters or fewer.
 - Write a natural, scene-led opening followed by supported, scannable details.
+- Keep buyer-facing copy customer-ready. Do not include source-attribution phrases such as `according to supplier specifications`, internal evidence caveats, or non-selling supplier fields such as `not customized`, `folded: no`, `with rollers: no`, or `no high-concerned chemical`.
 - Choose a defensible category.
 - Leave price as `null` for manual entry.
 - Record warnings, omissions, conflicts, inspected images, and evidence in the result.
@@ -155,7 +187,7 @@ Workspace copywriting settings are stored at:
 <active-root>/.etsy-listing-studio/settings/copywriting.json
 ```
 
-Switching roots switches the saved brand voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer.
+Switching roots switches the saved brand voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer. Fresh roots start unbranded: universal formatting, SEO, and safety rules are present, but shop identity and policy footer fields stay blank until saved for that workspace.
 
 ## Processing Jobs
 

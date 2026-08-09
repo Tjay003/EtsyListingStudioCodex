@@ -69,7 +69,7 @@ Each active product root may store copywriting settings at:
 .etsy-listing-studio/settings/copywriting.json
 ```
 
-These settings are workspace-scoped. Switching product roots switches the brand voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer. A fresh root starts with default Nookform-oriented settings until the user edits and saves them in the Studio UI.
+These settings are workspace-scoped. Switching product roots switches the brand voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer. A fresh root starts unbranded: universal formatting, SEO, and safety rules are present, but shop identity and policy footer fields stay blank until the user edits and saves them in the Studio UI.
 
 ## Product Identity and Duplicates
 
@@ -85,6 +85,7 @@ These settings are workspace-scoped. Switching product roots switches the brand 
 - Use a clear title no longer than 140 characters and normally fewer than 15 words.
 - Produce up to 13 useful, non-duplicate tags, each no longer than 20 characters.
 - Write a natural opening followed by supported, scannable details.
+- Keep buyer-facing copy customer-ready. Do not include source-attribution phrases such as "according to supplier specifications", internal evidence caveats, or non-selling supplier fields such as "not customized", "folded: no", "with rollers: no", or "no high-concerned chemical".
 - Choose a defensible category and leave final price manual.
 - Surface possible IP or trademark issues as visible, non-blocking warnings.
 - Omit unknowns and disputed claims instead of guessing.

@@ -15,7 +15,7 @@ This is intentionally separate from `EtsyListingsAutomation`. Do not merge the t
 - Descriptions may open with natural shopper-facing storytelling, followed by supported product details.
 - Final prices remain manual.
 - Image contracts may anticipate future work, but image generation is disabled in the current milestone.
-- Workspace copywriting memory is stored per product root in `.etsy-listing-studio/settings/copywriting.json`; use it for shop voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer.
+- Workspace copywriting memory is stored per product root in `.etsy-listing-studio/settings/copywriting.json`; use it for shop voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer. Fresh roots are intentionally unbranded unless the workspace has saved identity and policy settings.
 
 ## Intended Workflow
 1. The user selects or imports one or more local product folders.

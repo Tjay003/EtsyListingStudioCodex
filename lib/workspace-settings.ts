@@ -1,14 +1,8 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { WorkspaceCopywritingSettingsV1 } from "./contracts";
 import { STUDIO_SCHEMA_VERSION } from "./contracts";
 import { readJson, writeJsonAtomic } from "./fs-utils";
-
-const POLICY_FOOTER = `- Order Adjustments & Cancellations -
-We want you to love your space. If you need to cancel your order, please let us know within 5 hours of purchase. Because each of our design-forward pieces is made to order specifically for you, we begin production immediately after this window and cannot halt the process.
-
-- Returns & Damaged Items -
-Due to the custom nature of our curated collection, we are only able to accept returns or issue refunds if your item arrives damaged or incorrect. Should an issue arise, please reach out to us right away with a few clear photos of the item so our team can step in and take care of it for you. We deeply appreciate your support of Nookform and your understanding of our studio process.`;
 
 function now() {
   return new Date().toISOString();
@@ -20,22 +14,21 @@ export function defaultCopywritingSettings(
   return {
     schema_version: STUDIO_SCHEMA_VERSION,
     updated_at: timestamp,
-    shop_name: "Nookform",
-    tagline: "Modern furniture for thoughtful spaces. Form for every corner.",
-    brand_profile:
-      "Nookform is a design-forward furniture and home-interior brand focused on side tables, bedside tables, accent tables, coffee tables, and artistic tabletop accessories. The brand centers thoughtful furniture that brings form, function, and character to overlooked corners and everyday spaces.",
+    shop_name: "",
+    tagline: "",
+    brand_profile: "",
     voice:
-      "Warm modern, artistic, welcoming, concise, visually descriptive, tasteful, and quietly confident. Write like a trusted creative friend who understands interiors. Avoid aggressive sales language, excessive adjectives, keyword stuffing, and generic phrases like perfect for every home.",
+      "Customer-ready, natural, concise, and visually clear. Match the saved workspace identity when provided. Avoid aggressive sales language, excessive adjectives, keyword stuffing, and generic phrases like perfect for every home.",
     description_structure:
-      "Open with a short lifestyle-led sentence grounded in supported product evidence. Follow with scannable supported details using hyphen bullets. Keep internal review notes, omitted-field explanations, and evidence caveats out of customer-facing descriptions; store them only in warnings, evidence, and omitted_fields. End with the required policy footer when enabled.",
+      "Open with a short lifestyle-led sentence grounded in supported product evidence. Follow with scannable, customer-ready details using hyphen bullets. Only include sections that help the buyer decide. If size, material, assembly, capacity, compatibility, care, package contents, or customization details are unclear, missing, boring, or not buyer-useful, omit them instead of explaining the omission. Do not include internal source-attribution phrases such as according to supplier specifications, source evidence says, supplier metadata, listed as, not provided, or intentionally omitted. Store evidence caveats only in warnings, evidence, and omitted_fields. End with the required policy footer when enabled.",
     formatting_rules:
       "Use clean, flat text. Use a standard hyphen followed by a space for all lists. Do not use bullet symbols, stars, emojis, markdown tables, HTML tags, script notation, or unparsed rich text codes in buyer-facing copy.",
     seo_rules:
       "Front-load titles with the clearest high-intent product phrase. Keep titles natural and under Etsy's 140-character limit. Use exactly 13 tags only when 13 strong evidence-supported tags exist; otherwise use fewer. Each tag must be 20 characters or fewer and should cover distinct shopper intent without filler.",
     banned_language:
-      "Do not include wholesale supplier jargon, shipping carrier terminology, platform names such as AliExpress, global transit lines, unsupported luxury claims, or unsupported custom, material, size, capacity, compatibility, safety, performance, package, or origin claims.",
-    policy_footer: POLICY_FOOTER,
-    require_policy_footer: true,
+      "Do not include wholesale supplier jargon, shipping carrier terminology, platform names such as AliExpress, global transit lines, unsupported luxury claims, source-attribution phrases like according to supplier specifications, or unsupported custom, material, size, capacity, compatibility, safety, performance, package, or origin claims. Do not mention negative or non-selling specs such as not customized, folded: no, with rollers: no, no high-concerned chemical, or similar supplier fields unless the user explicitly asks.",
+    policy_footer: "",
+    require_policy_footer: false,
   };
 }
 
@@ -112,4 +105,10 @@ export async function saveCopywritingSettings(
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeJsonAtomic(filePath, next);
   return next;
+}
+
+export async function resetCopywritingSettings(root: string) {
+  const filePath = settingsPath(root);
+  await rm(filePath, { force: true });
+  return defaultCopywritingSettings();
 }

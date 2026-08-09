@@ -35,3 +35,13 @@ test("blocks unsupported contract shapes and Etsy limit violations", () => {
   assert.ok(codes.includes("duplicate_tag"));
   assert.ok(codes.includes("price_must_be_manual"));
 });
+
+test("blocks internal source phrasing from buyer-facing descriptions", () => {
+  const draft = validDraft();
+  draft.listing.description =
+    "Materials & Details\n- Shape: Rectangle, according to supplier specifications\n- Folded: No";
+
+  const codes = validateCopywritingDraft(draft).map((issue) => issue.code);
+  assert.ok(codes.includes("source_attribution_in_copy"));
+  assert.ok(codes.includes("non_selling_supplier_field_in_copy"));
+});

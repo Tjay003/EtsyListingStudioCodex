@@ -25,6 +25,7 @@ import {
 } from "../lib/product-store";
 import {
   readCopywritingSettings,
+  resetCopywritingSettings,
   saveCopywritingSettings,
 } from "../lib/workspace-settings";
 
@@ -261,9 +262,10 @@ test("copywriting settings are scoped to the active workspace root", async () =>
     const otherRoot = await mkdtemp(path.join(os.tmpdir(), "etsy-studio-other-"));
     try {
       const defaults = await readCopywritingSettings(root);
-      assert.equal(defaults.shop_name, "Nookform");
-      assert.match(defaults.policy_footer, /Order Adjustments & Cancellations/);
-      assert.equal(defaults.require_policy_footer, true);
+      assert.equal(defaults.shop_name, "");
+      assert.equal(defaults.brand_profile, "");
+      assert.equal(defaults.policy_footer, "");
+      assert.equal(defaults.require_policy_footer, false);
 
       await saveCopywritingSettings(root, {
         shop_name: "Corner Studio",
@@ -274,7 +276,14 @@ test("copywriting settings are scoped to the active workspace root", async () =>
       const fresh = await readCopywritingSettings(otherRoot);
       assert.equal(saved.shop_name, "Corner Studio");
       assert.equal(saved.voice, "Quiet, architectural, and concise.");
-      assert.equal(fresh.shop_name, "Nookform");
+      assert.equal(fresh.shop_name, "");
+      assert.equal(fresh.brand_profile, "");
+
+      const reset = await resetCopywritingSettings(root);
+      assert.equal(reset.shop_name, "");
+      assert.equal(reset.brand_profile, "");
+      assert.equal(reset.policy_footer, "");
+      assert.equal(reset.require_policy_footer, false);
     } finally {
       await rm(otherRoot, { recursive: true, force: true });
     }

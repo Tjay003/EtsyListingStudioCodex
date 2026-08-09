@@ -4,26 +4,43 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $fallbackNode = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
 $fallbackPnpm = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd"
 
+function Test-NodeVersion {
+  param([string]$Path)
+
+  try {
+    $versionText = (& $Path --version).TrimStart("v")
+    $version = [Version]$versionText
+    return ($version.Major -gt 22 -or ($version.Major -eq 22 -and $version.Minor -ge 13))
+  } catch {
+    return $false
+  }
+}
+
 $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
-$nodePath = if ($nodeCommand) { $nodeCommand.Source } else { $null }
-if (-not $nodePath -and (Test-Path -LiteralPath $fallbackNode)) {
+$nodePath = $null
+$usingFallbackNode = $false
+
+if ($nodeCommand -and (Test-NodeVersion -Path $nodeCommand.Source)) {
+  $nodePath = $nodeCommand.Source
+} elseif ((Test-Path -LiteralPath $fallbackNode) -and (Test-NodeVersion -Path $fallbackNode)) {
   $nodePath = $fallbackNode
+  $usingFallbackNode = $true
   $env:Path = "$(Split-Path -Parent $fallbackNode);$env:Path"
 }
 
 if (-not $nodePath) {
-  throw "Node.js was not found. Install Node.js 22.13 or newer and try again."
-}
-
-$nodeVersion = (& $nodePath --version).TrimStart("v").Split(".")
-if ([int]$nodeVersion[0] -lt 22 -or ([int]$nodeVersion[0] -eq 22 -and [int]$nodeVersion[1] -lt 13)) {
   throw "Node.js 22.13 or newer is required."
 }
 
-$pnpmCommand = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
-$pnpmPath = if ($pnpmCommand) { $pnpmCommand.Source } else { $null }
-if (-not $pnpmPath -and (Test-Path -LiteralPath $fallbackPnpm)) {
+$pnpmPath = $null
+if ($usingFallbackNode -and (Test-Path -LiteralPath $fallbackPnpm)) {
   $pnpmPath = $fallbackPnpm
+} else {
+  $pnpmCommand = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
+  $pnpmPath = if ($pnpmCommand) { $pnpmCommand.Source } else { $null }
+  if (-not $pnpmPath -and (Test-Path -LiteralPath $fallbackPnpm)) {
+    $pnpmPath = $fallbackPnpm
+  }
 }
 
 if (-not $pnpmPath) {

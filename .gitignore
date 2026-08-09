@@ -4,6 +4,11 @@
 /outputs/
 /jobs/
 /logs/
+/.job-drafts/
+/.tmp/
+
+# Machine-local AI/API directories
+/.openai/
 
 # Secrets and local environments
 .env
@@ -21,6 +26,7 @@ __pycache__/
 node_modules/
 .next/
 dist/
+build/
 *.tsbuildinfo
 pnpm-debug.log*
 .etsy-studio.local.json

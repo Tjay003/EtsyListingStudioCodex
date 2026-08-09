@@ -50,8 +50,19 @@ type ResultBundle = {
   review: ProductReviewStateV1 | null;
 };
 
-type LibraryFilter = "all" | "review" | "duplicates" | "rejected" | "trash";
+type LibraryFilter =
+  | "all"
+  | "unlisted"
+  | "listed"
+  | "review"
+  | "duplicates"
+  | "rejected"
+  | "trash";
 type CenterView = "evidence" | "results";
+type CompanionView = "images" | "evidence" | "tweak";
+type TweakField = "title" | "description" | "tags" | "category";
+
+const TWEAK_FIELDS: TweakField[] = ["title", "description", "tags", "category"];
 
 type SettingsPayload = {
   settings: WorkspaceCopywritingSettingsV1;
@@ -105,6 +116,15 @@ function fullListingText(result: CopywritingResultV1) {
   ].join("\n");
 }
 
+function isImageSourcePath(value: string | null) {
+  return Boolean(value && /\.(avif|gif|jpe?g|png|webp)$/i.test(value));
+}
+
+function sizedImageUrl(image: { imageUrl: string }, width: number) {
+  const separator = image.imageUrl.includes("?") ? "&" : "?";
+  return `${image.imageUrl}${separator}w=${width}`;
+}
+
 export function Studio() {
   const [workspace, setWorkspace] = useState<WorkspacePayload>({
     active_root: null,
@@ -129,13 +149,12 @@ export function Studio() {
   const [noteDraft, setNoteDraft] = useState("");
   const [results, setResults] = useState<ResultBundle[]>([]);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
-  const [tweakFields, setTweakFields] = useState<
-    Array<"title" | "description" | "tags" | "category">
-  >(["title"]);
+  const [tweakFields, setTweakFields] = useState<TweakField[]>(["title"]);
   const [tweakInstruction, setTweakInstruction] = useState("");
   const [busy, setBusy] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [companionView, setCompanionView] = useState<CompanionView>("images");
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
 
@@ -279,6 +298,8 @@ export function Studio() {
         product.sourceProductId.includes(query);
       const matchesFilter =
         filter === "all" ||
+        (filter === "unlisted" && product.results.length === 0) ||
+        (filter === "listed" && product.results.length > 0) ||
         (filter === "review" &&
           (product.metadataError ||
             product.missingImages.length > 0 ||
@@ -288,6 +309,18 @@ export function Studio() {
       return matchesQuery && matchesFilter;
     });
   }, [filter, products, search]);
+  const visibleSelectableProducts = filteredProducts.filter(
+    (product) => !product.rejected,
+  );
+  const visibleWithoutListings = visibleSelectableProducts.filter(
+    (product) => product.results.length === 0,
+  );
+  const visibleWithListings = visibleSelectableProducts.filter(
+    (product) => product.results.length > 0,
+  );
+  const visibleSelectedCount = visibleSelectableProducts.filter(
+    (product) => product.selected,
+  ).length;
 
   const galleryImages =
     activeProduct?.images.filter((image) => image.role === galleryRole) ?? [];
@@ -300,9 +333,45 @@ export function Studio() {
     results.find((bundle) => bundle.result.result_id === activeResultId) ??
     results[0] ??
     null;
+  const resultEvidenceImagePaths = new Set(
+    activeResult?.result.evidence
+      .map((entry) => entry.source_path)
+      .filter(isImageSourcePath) ?? [],
+  );
+  const resultInspectedImagePaths = new Set(
+    activeResult?.result.inspected_images.map((image) => image.relative_path) ??
+      [],
+  );
+  const companionImages =
+    activeProduct?.images.filter(
+      (image) =>
+        resultInspectedImagePaths.has(image.relativePath) ||
+        resultEvidenceImagePaths.has(image.relativePath),
+    ) ?? [];
+  const referenceImage = activeProduct?.images.find(
+    (image) => image.relativePath === activeProduct?.referenceImage,
+  );
+  const companionAllImages = activeProduct?.images ?? [];
+  const companionVariationImages =
+    activeProduct?.images.filter((image) => image.role === "variation") ?? [];
+  const companionDimensionImages =
+    activeProduct?.images.filter((image) =>
+      activeResult?.result.evidence.some(
+        (entry) =>
+          entry.source_path === image.relativePath &&
+          entry.field.toLocaleLowerCase().includes("dimension"),
+      ),
+    ) ?? [];
+  const companionPrimaryImages = [
+    ...(referenceImage ? [referenceImage] : []),
+    ...companionImages.filter(
+      (image) => image.relativePath !== referenceImage?.relativePath,
+    ),
+  ];
 
   useEffect(() => {
     setDescriptionExpanded(false);
+    setCompanionView("images");
   }, [activeResultId]);
 
   const openWorkspace = async (action: "pick" | "open", selectedPath?: string) => {
@@ -348,6 +417,38 @@ export function Studio() {
       await patchProduct(product.instanceId, { selected: !product.selected });
     } catch (cause) {
       report(cause);
+    }
+  };
+
+  const bulkSetSelection = async (
+    targetProducts: ProductSnapshotV1[],
+    selected: boolean,
+    label: string,
+  ) => {
+    const targets = targetProducts.filter(
+      (product) => !product.rejected && product.selected !== selected,
+    );
+    if (!targets.length) {
+      notify(`No visible products to ${selected ? "select" : "clear"}.`);
+      return;
+    }
+    setBusy(`bulk-${label}`);
+    try {
+      await Promise.all(
+        targets.map((product) =>
+          patchProduct(product.instanceId, { selected }),
+        ),
+      );
+      await loadProducts();
+      notify(
+        `${targets.length} product${targets.length === 1 ? "" : "s"} ${
+          selected ? "selected" : "cleared"
+        }.`,
+      );
+    } catch (cause) {
+      report(cause);
+    } finally {
+      setBusy("");
     }
   };
 
@@ -412,6 +513,22 @@ export function Studio() {
       );
       setCopySettings(data.settings);
       notify("Workspace copywriting memory saved.");
+    } catch (cause) {
+      report(cause);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const resetCopySettings = async () => {
+    setBusy("settings");
+    try {
+      const data = await requestJson<SettingsPayload>(
+        "/api/local/workspace-settings",
+        { method: "DELETE" },
+      );
+      setCopySettings(data.settings);
+      notify("Workspace voice reset to a fresh, non-branded default.");
     } catch (cause) {
       report(cause);
     } finally {
@@ -608,6 +725,8 @@ export function Studio() {
             {(
               [
                 ["all", "All"],
+                ["unlisted", "No listings"],
+                ["listed", "Has listings"],
                 ["review", "Review"],
                 ["duplicates", "Duplicates"],
                 ["rejected", "Rejected"],
@@ -678,7 +797,12 @@ export function Studio() {
                       type="button"
                     >
                       {cover ? (
-                        <img src={cover.imageUrl} alt="" />
+                        <img
+                          src={sizedImageUrl(cover, 96)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         <span className="image-placeholder">
                           <ImageIcon size={17} />
@@ -717,24 +841,68 @@ export function Studio() {
           <footer className="library-footer">
             <span>
               <strong>{selectedProducts.length} selected</strong>
-              <small>{products.length} discovered recursively</small>
+              <small>
+                {filter === "trash"
+                  ? `${trash.length} in trash`
+                  : `${filteredProducts.length} visible · ${products.length} discovered`}
+              </small>
             </span>
-            <button
-              onClick={() =>
-                void Promise.all(
-                  products.map((product) =>
-                    patchProduct(product.instanceId, {
-                      selected: !product.rejected,
-                    }),
-                  ),
-                )
-                  .then(loadProducts)
-                  .catch(report)
-              }
-              type="button"
-            >
-              Select all
-            </button>
+            {filter !== "trash" && (
+              <div className="bulk-actions" aria-label="Bulk selection">
+                <button
+                  disabled={!visibleSelectableProducts.length || busy.startsWith("bulk-")}
+                  onClick={() =>
+                    void bulkSetSelection(
+                      visibleSelectableProducts,
+                      true,
+                      "visible",
+                    )
+                  }
+                  type="button"
+                >
+                  Select visible
+                </button>
+                <button
+                  disabled={!visibleWithoutListings.length || busy.startsWith("bulk-")}
+                  onClick={() =>
+                    void bulkSetSelection(
+                      visibleWithoutListings,
+                      true,
+                      "unlisted",
+                    )
+                  }
+                  type="button"
+                >
+                  No listings
+                </button>
+                <button
+                  disabled={!visibleWithListings.length || busy.startsWith("bulk-")}
+                  onClick={() =>
+                    void bulkSetSelection(
+                      visibleWithListings,
+                      true,
+                      "listed",
+                    )
+                  }
+                  type="button"
+                >
+                  Has listings
+                </button>
+                <button
+                  disabled={!visibleSelectedCount || busy.startsWith("bulk-")}
+                  onClick={() =>
+                    void bulkSetSelection(
+                      visibleSelectableProducts,
+                      false,
+                      "clear",
+                    )
+                  }
+                  type="button"
+                >
+                  Clear visible
+                </button>
+              </div>
+            )}
           </footer>
         </aside>
 
@@ -854,7 +1022,11 @@ export function Studio() {
                           type="button"
                           aria-label="Open image viewer"
                         >
-                          <img src={activeImage.imageUrl} alt={activeImage.alt} />
+                          <img
+                            src={sizedImageUrl(activeImage, 960)}
+                            alt={activeImage.alt}
+                            decoding="async"
+                          />
                           <Maximize2 size={17} />
                         </button>
                       ) : (
@@ -879,7 +1051,12 @@ export function Studio() {
                           aria-label={`View ${image.fileName}`}
                         >
                           {image.exists ? (
-                            <img src={image.imageUrl} alt="" />
+                            <img
+                              src={sizedImageUrl(image, 120)}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                            />
                           ) : (
                             <ImageIcon size={16} />
                           )}
@@ -1039,6 +1216,8 @@ export function Studio() {
                       </select>
                     </div>
 
+                    <div className="result-review-layout">
+                      <div className="result-copy-column">
                     <div className="result-review-card">
                       <div className="review-state">
                         <span
@@ -1355,6 +1534,256 @@ export function Studio() {
                         Queue targeted tweak
                       </button>
                     </section>
+                      </div>
+
+                      <aside className="review-companion">
+                        <div className="companion-header">
+                          <div>
+                            <span className="eyebrow">Review companion</span>
+                            <h3>Cross-check panel</h3>
+                          </div>
+                          <div
+                            className="companion-tabs"
+                            aria-label="Review companion mode"
+                          >
+                            {(
+                              [
+                                ["images", "Images"],
+                                ["evidence", "Evidence"],
+                                ["tweak", "Tweak"],
+                              ] as const
+                            ).map(([mode, label]) => (
+                              <button
+                                className={
+                                  companionView === mode ? "is-active" : ""
+                                }
+                                key={mode}
+                                onClick={() => setCompanionView(mode)}
+                                type="button"
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {companionView === "images" && (
+                          <div className="companion-pane">
+                            <div className="companion-section-heading">
+                              <strong>Used while writing</strong>
+                              <span>
+                                {companionPrimaryImages.length} image
+                                {companionPrimaryImages.length === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                            {companionPrimaryImages.length ? (
+                              <div className="companion-image-grid">
+                                {companionPrimaryImages.map((image) => (
+                                  <button
+                                    key={`${image.role}-${image.index}-${image.relativePath}`}
+                                    onClick={() => {
+                                      setActiveImageId(image.id);
+                                      setViewerOpen(true);
+                                    }}
+                                    type="button"
+                                  >
+                                    <img
+                                      src={sizedImageUrl(image, 180)}
+                                      alt={image.alt}
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                    <span>
+                                      {image.relativePath ===
+                                      referenceImage?.relativePath
+                                        ? "Reference"
+                                        : resultInspectedImagePaths.has(
+                                              image.relativePath,
+                                            )
+                                          ? "Inspected"
+                                          : "Evidence"}
+                                    </span>
+                                    <Maximize2 size={13} />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="companion-empty">
+                                No inspected images were recorded for this
+                                version.
+                              </p>
+                            )}
+
+                            <div className="companion-subtabs">
+                              <span>Quick sets</span>
+                              <button
+                                disabled={!referenceImage}
+                                onClick={() => {
+                                  if (!referenceImage) return;
+                                  setActiveImageId(referenceImage.id);
+                                  setViewerOpen(true);
+                                }}
+                                type="button"
+                              >
+                                Reference
+                              </button>
+                              <button
+                                disabled={!companionDimensionImages.length}
+                                onClick={() => {
+                                  const image = companionDimensionImages[0];
+                                  if (!image) return;
+                                  setActiveImageId(image.id);
+                                  setViewerOpen(true);
+                                }}
+                                type="button"
+                              >
+                                Dimensions
+                              </button>
+                              <button
+                                disabled={!companionVariationImages.length}
+                                onClick={() => {
+                                  const image = companionVariationImages[0];
+                                  if (!image) return;
+                                  setActiveImageId(image.id);
+                                  setViewerOpen(true);
+                                }}
+                                type="button"
+                              >
+                                Variations
+                              </button>
+                            </div>
+
+                            <details className="companion-all-images">
+                              <summary>
+                                All product images ({companionAllImages.length})
+                              </summary>
+                              <div className="companion-thumb-strip">
+                                {companionAllImages.map((image) => (
+                                  <button
+                                    key={`all-${image.role}-${image.index}-${image.relativePath}`}
+                                    onClick={() => {
+                                      setActiveImageId(image.id);
+                                      setViewerOpen(true);
+                                    }}
+                                    type="button"
+                                  >
+                                    <img
+                                      src={sizedImageUrl(image, 96)}
+                                      alt={image.alt}
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            </details>
+                          </div>
+                        )}
+
+                        {companionView === "evidence" && (
+                          <div className="companion-pane">
+                            <div className="companion-section-heading">
+                              <strong>Evidence ledger</strong>
+                              <span>
+                                {activeResult.result.evidence.length} entries
+                              </span>
+                            </div>
+                            <div className="companion-evidence-list">
+                              {activeResult.result.evidence.map((entry) => {
+                                const evidenceImage = activeProduct?.images.find(
+                                  (image) =>
+                                    image.relativePath === entry.source_path,
+                                );
+                                return (
+                                  <article key={entry.id}>
+                                    <span>
+                                      {entry.kind.replaceAll("_", " ")}
+                                    </span>
+                                    <strong>{entry.field}</strong>
+                                    <p>
+                                      {Array.isArray(entry.value)
+                                        ? entry.value.join(", ")
+                                        : entry.value}
+                                    </p>
+                                    <small>
+                                      {entry.source_path ?? "No source path"}
+                                      {entry.excerpt && ` - ${entry.excerpt}`}
+                                    </small>
+                                    {evidenceImage && (
+                                      <button
+                                        onClick={() => {
+                                          setActiveImageId(evidenceImage.id);
+                                          setViewerOpen(true);
+                                        }}
+                                        type="button"
+                                      >
+                                        Open source image
+                                      </button>
+                                    )}
+                                  </article>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {companionView === "tweak" && (
+                          <div className="companion-pane companion-tweak">
+                            <div className="companion-section-heading">
+                              <strong>Targeted tweak</strong>
+                              <span>New version</span>
+                            </div>
+                            <p>
+                              Reuse this result&apos;s evidence and change only
+                              the selected fields.
+                            </p>
+                            <div className="field-checks">
+                              {TWEAK_FIELDS.map((field) => (
+                                <label key={field}>
+                                  <input
+                                    checked={tweakFields.includes(field)}
+                                    onChange={() =>
+                                      setTweakFields((current) =>
+                                        current.includes(field)
+                                          ? current.filter(
+                                              (item) => item !== field,
+                                            )
+                                          : [...current, field],
+                                      )
+                                    }
+                                    type="checkbox"
+                                  />
+                                  <span>{field}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <textarea
+                              value={tweakInstruction}
+                              onChange={(event) =>
+                                setTweakInstruction(event.target.value)
+                              }
+                              placeholder="Example: dimensions should use inches only, or remove unsupported weather wording."
+                            />
+                            <button
+                              disabled={
+                                busy === "tweak" ||
+                                !tweakInstruction.trim() ||
+                                tweakFields.length === 0
+                              }
+                              onClick={() => void queueTweak()}
+                              type="button"
+                            >
+                              {busy === "tweak" ? (
+                                <LoaderCircle className="spin" size={15} />
+                              ) : (
+                                <Copy size={15} />
+                              )}
+                              Queue targeted tweak
+                            </button>
+                          </div>
+                        )}
+                      </aside>
+                    </div>
                   </>
                 ) : (
                   <div className="empty-results">
@@ -1407,9 +1836,11 @@ export function Studio() {
                 );
                 return image ? (
                   <img
-                    src={image.imageUrl}
+                    src={sizedImageUrl(image, 80)}
                     alt=""
                     key={product.instanceId}
+                    loading="lazy"
+                    decoding="async"
                     style={{ zIndex: 3 - index }}
                   />
                 ) : null;
@@ -1472,9 +1903,14 @@ export function Studio() {
             </p>
             {settingsOpen && copySettings && (
               <div className="settings-fields">
+                <div className="settings-section-title">
+                  Workspace identity
+                  <small>Saved only in this selected product root.</small>
+                </div>
                 <label>
                   <span>Shop name</span>
                   <input
+                    placeholder="Fresh workspace"
                     value={copySettings.shop_name}
                     onChange={(event) =>
                       updateCopySetting("shop_name", event.target.value)
@@ -1484,6 +1920,7 @@ export function Studio() {
                 <label>
                   <span>Tagline</span>
                   <textarea
+                    placeholder="Optional brand tagline for this workspace."
                     value={copySettings.tagline}
                     onChange={(event) =>
                       updateCopySetting("tagline", event.target.value)
@@ -1493,6 +1930,7 @@ export function Studio() {
                 <label>
                   <span>Brand profile</span>
                   <textarea
+                    placeholder="Describe this workspace's brand, audience, products, and mood."
                     value={copySettings.brand_profile}
                     onChange={(event) =>
                       updateCopySetting("brand_profile", event.target.value)
@@ -1502,12 +1940,17 @@ export function Studio() {
                 <label>
                   <span>Voice and vibe</span>
                   <textarea
+                    placeholder="Describe how listings should sound for this workspace."
                     value={copySettings.voice}
                     onChange={(event) =>
                       updateCopySetting("voice", event.target.value)
                     }
                   />
                 </label>
+                <div className="settings-section-title">
+                  Copywriting defaults
+                  <small>Shared guardrails for clean Etsy-ready copy.</small>
+                </div>
                 <label>
                   <span>Description structure</span>
                   <textarea
@@ -1569,19 +2012,30 @@ export function Studio() {
                   />
                   <span>Append policy footer to every description</span>
                 </label>
-                <button
-                  className="settings-save"
-                  disabled={busy === "settings"}
-                  onClick={() => void saveCopySettings()}
-                  type="button"
-                >
-                  {busy === "settings" ? (
-                    <LoaderCircle className="spin" size={15} />
-                  ) : (
-                    <Check size={15} />
-                  )}
-                  Save workspace voice
-                </button>
+                <div className="settings-actions">
+                  <button
+                    className="settings-save"
+                    disabled={busy === "settings"}
+                    onClick={() => void saveCopySettings()}
+                    type="button"
+                  >
+                    {busy === "settings" ? (
+                      <LoaderCircle className="spin" size={15} />
+                    ) : (
+                      <Check size={15} />
+                    )}
+                    Save workspace voice
+                  </button>
+                  <button
+                    className="settings-reset"
+                    disabled={busy === "settings"}
+                    onClick={() => void resetCopySettings()}
+                    type="button"
+                  >
+                    <RefreshCw size={14} />
+                    Start fresh
+                  </button>
+                </div>
               </div>
             )}
           </section>
@@ -1760,7 +2214,7 @@ export function Studio() {
             >
               <X size={18} />
             </button>
-            <img src={activeImage.imageUrl} alt={activeImage.alt} />
+            <img src={activeImage.imageUrl} alt={activeImage.alt} decoding="async" />
             <footer>
               <span>{activeImage.relativePath}</span>
               {activeImage.relativePath === activeProduct?.referenceImage && (

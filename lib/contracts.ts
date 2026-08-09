@@ -219,6 +219,19 @@ export interface LocalStudioConfigV1 {
   recent_roots: string[];
 }
 
+const BUYER_COPY_BANNED_PATTERNS: Array<{ code: string; pattern: RegExp }> = [
+  {
+    code: "source_attribution_in_copy",
+    pattern:
+      /\b(according to supplier specifications|supplier specifications|supplier metadata|source evidence says|source evidence|listed as|not provided|intentionally omitted)\b/i,
+  },
+  {
+    code: "non_selling_supplier_field_in_copy",
+    pattern:
+      /\b(not customized|is customized:\s*no|customization:\s*no|folded:\s*no|with rollers:\s*no|no high-concerned chemical|high-concerned chemical:\s*none|hign-concerned chemical:\s*none)\b/i,
+  },
+];
+
 export function validateCopywritingDraft(
   value: unknown,
 ): ListingValidationIssueV1[] {
@@ -277,6 +290,18 @@ export function validateCopywritingDraft(
       severity: "blocking",
       message: "A listing description is required.",
     });
+  } else {
+    for (const rule of BUYER_COPY_BANNED_PATTERNS) {
+      if (rule.pattern.test(description)) {
+        issues.push({
+          code: rule.code,
+          field: "description",
+          severity: "blocking",
+          message:
+            "Buyer-facing descriptions must be customer-ready and cannot include source-attribution phrases or non-selling supplier fields.",
+        });
+      }
+    }
   }
 
   if (!category) {

@@ -39,7 +39,8 @@ If a job fails, run `pnpm jobs -- fail <job-id> "<actionable error>"` and contin
 - Follow the title, description, category, attribute, and tag strategy in `references/etsy-search-copywriting.md`.
 - Follow the active workspace copywriting settings from `pnpm jobs -- settings <job-id>`. If enabled, append the policy footer exactly at the bottom of the description.
 - Keep buyer-facing copy free of platform names, supplier jargon, and banned language from the workspace settings.
-- Do not place internal review notes, omitted-field explanations, missing-evidence caveats, or phrases like "not provided in the source evidence" in the buyer-facing description. Put those only in `warnings`, `omitted_fields`, `conflicts`, or `notes`.
+- Write buyer-facing copy as customer-ready shop text, not an evidence report. Do not place internal review notes, source-attribution phrases, omitted-field explanations, missing-evidence caveats, or phrases like "according to supplier specifications", "supplier metadata", "source evidence says", "not provided in the source evidence", or "intentionally omitted" in the buyer-facing description. Put those only in `warnings`, `omitted_fields`, `conflicts`, or `notes`.
+- Omit non-selling supplier fields such as "not customized", "folded: no", "with rollers: no", "no high-concerned chemical", or similar negatives unless the user explicitly asks for them. If size, material, assembly, capacity, compatibility, care, package contents, or customization details are unclear or not useful to a buyer, omit the section instead of explaining why.
 - Choose a defensible category and keep `price` set to `null`.
 - Surface possible trademarks, copyrighted characters, or branded terms as visible non-blocking warnings.
 - Omit unknown details rather than guessing.
