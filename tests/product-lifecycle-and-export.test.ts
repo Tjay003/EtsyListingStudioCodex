@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -29,6 +29,9 @@ test("item number helpers: extract, format, and sequential scan", async () => {
   assert.equal(extractItemNumber("(005) item"), 5);
   assert.equal(extractItemNumber("007_item"), 7);
   assert.equal(extractItemNumber("10 - item"), 10);
+  assert.equal(extractItemNumber("item-001"), 1);
+  assert.equal(extractItemNumber("sku_005"), 5);
+  assert.equal(extractItemNumber("product 15"), 15);
   assert.equal(extractItemNumber("42"), 42);
   assert.equal(extractItemNumber("unrelated-product"), null);
 

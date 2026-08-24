@@ -145,6 +145,9 @@ export function extractItemNumber(text: string): number | null {
   const parenMatch = text.match(/^\((\d+)\)/);
   if (parenMatch) return parseInt(parenMatch[1], 10);
 
+  const prefixWordMatch = text.match(/^(?:item|product|sku|listing|id)[_.\s-]*(\d+)/i);
+  if (prefixWordMatch) return parseInt(prefixWordMatch[1], 10);
+
   const prefixMatch = text.match(/^(\d+)[\s_.-]/);
   if (prefixMatch) return parseInt(prefixMatch[1], 10);
 
