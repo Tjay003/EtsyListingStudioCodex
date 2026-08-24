@@ -5,6 +5,7 @@ import {
   realpath,
   rename,
   stat,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
@@ -54,8 +55,33 @@ export async function readJson<T>(filePath: string): Promise<T> {
 export async function writeJsonAtomic(filePath: string, value: unknown) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const temporary = `${filePath}.${randomUUID()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(temporary, filePath);
+  const content = `${JSON.stringify(value, null, 2)}\n`;
+  await writeFile(temporary, content, "utf8");
+
+  // Attempt atomic rename with retry backoff for Windows and OneDrive file locks
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rename(temporary, filePath);
+      return;
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code === "EPERM" || code === "EBUSY" || code === "EACCES") {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 30 * Math.pow(2, attempt)),
+        );
+      } else {
+        await unlink(temporary).catch(() => undefined);
+        throw err;
+      }
+    }
+  }
+
+  // Fallback: write directly to filePath and clean up temporary
+  try {
+    await writeFile(filePath, content, "utf8");
+  } finally {
+    await unlink(temporary).catch(() => undefined);
+  }
 }
 
 export function safeFileSegment(value: string) {
