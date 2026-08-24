@@ -27,6 +27,7 @@ import {
   Search,
   Settings2,
   ShieldAlert,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -815,6 +816,9 @@ export function Studio() {
     <main className="studio-shell">
       <header className="topbar">
         <div className="brand">
+          <div className="brand-mark" aria-hidden="true">
+            <Sparkles size={18} />
+          </div>
           <span>
             <strong>Etsy Listing Studio</strong>
             <small>Local workspace</small>
