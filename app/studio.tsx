@@ -540,9 +540,30 @@ export function Studio() {
   };
 
   const toggleProduct = async (product: ProductSnapshotV1) => {
+    const targetId = product.instanceId;
+    const prevSelected = product.selected;
+    const nextSelected = !prevSelected;
+
+    // 0ms Optimistic UI update
+    setProducts((current) =>
+      current.map((item) =>
+        item.instanceId === targetId
+          ? { ...item, selected: nextSelected }
+          : item,
+      ),
+    );
+
     try {
-      await patchProduct(product.instanceId, { selected: !product.selected });
+      await patchProduct(targetId, { selected: nextSelected });
     } catch (cause) {
+      // Revert optimistic update on failure
+      setProducts((current) =>
+        current.map((item) =>
+          item.instanceId === targetId
+            ? { ...item, selected: prevSelected }
+            : item,
+        ),
+      );
       report(cause);
     }
   };
@@ -556,23 +577,47 @@ export function Studio() {
       (product) => !product.rejected && product.selected !== selected,
     );
     if (!targets.length) {
-      notify(`No visible products to ${selected ? "select" : "clear"}.`);
+      notify(`No visible products to ${selected ? "select" : "unselect"}.`);
       return;
     }
+    const targetIds = new Set(targets.map((product) => product.instanceId));
+    const targetInstanceIds = targets.map((product) => product.instanceId);
+
+    // 0ms Optimistic UI update across all matching products
+    setProducts((current) =>
+      current.map((product) =>
+        targetIds.has(product.instanceId)
+          ? { ...product, selected }
+          : product,
+      ),
+    );
+
     setBusy(`bulk-${label}`);
     try {
-      await Promise.all(
-        targets.map((product) =>
-          patchProduct(product.instanceId, { selected }),
-        ),
+      await requestJson<{ success: boolean; updatedCount?: number }>(
+        "/api/local/products/batch-select",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            instanceIds: targetInstanceIds,
+            selected,
+          }),
+        },
       );
-      await loadProducts();
       notify(
         `${targets.length} product${targets.length === 1 ? "" : "s"} ${
-          selected ? "selected" : "cleared"
+          selected ? "selected" : "unselected"
         }.`,
       );
     } catch (cause) {
+      // Revert optimistic update on failure
+      setProducts((current) =>
+        current.map((product) =>
+          targetIds.has(product.instanceId)
+            ? { ...product, selected: !selected }
+            : product,
+        ),
+      );
       report(cause);
     } finally {
       setBusy("");
@@ -1035,12 +1080,12 @@ export function Studio() {
                     void bulkSetSelection(
                       visibleSelectableProducts,
                       true,
-                      "visible",
+                      "all",
                     )
                   }
                   type="button"
                 >
-                  Select visible
+                  Select all
                 </button>
                 <button
                   disabled={!visibleWithoutListings.length || busy.startsWith("bulk-")}
@@ -1074,12 +1119,12 @@ export function Studio() {
                     void bulkSetSelection(
                       visibleSelectableProducts,
                       false,
-                      "clear",
+                      "unselect",
                     )
                   }
                   type="button"
                 >
-                  Clear visible
+                  Unselect all
                 </button>
                 {visibleSelectedCount > 0 && (
                   <button

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import sharp from "sharp";
 import {
+  batchUpdateProductSelection,
   checkEditedPhotosReady,
   extractItemNumber,
   formatItemNumber,
@@ -156,3 +157,49 @@ test("workspace settings: save and read google_sheets_webhook_url", async () => 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("batchUpdateProductSelection: bulk selects and unselects products in a single operation", async () => {
+  const root = await createFixture();
+  try {
+    // Create 3 products
+    for (let i = 1; i <= 3; i++) {
+      const productDir = path.join(root, `[00${i}] item-${i}`);
+      await mkdir(productDir, { recursive: true });
+      await writeFile(
+        path.join(productDir, "metadata.json"),
+        JSON.stringify({ title: `Item ${i}` }),
+      );
+    }
+
+    const initial = await scanWorkspace(root);
+    assert.equal(initial.length, 3);
+    assert.ok(initial.every((p) => p.selected === true));
+
+    const ids = initial.map((p) => p.instanceId);
+
+    // Unselect all products in batch
+    const unselectResult = await batchUpdateProductSelection(root, ids, false);
+    assert.equal(unselectResult.success, true);
+    assert.equal(unselectResult.updatedCount, 3);
+
+    // Verify all products are unselected
+    const afterUnselect = await scanWorkspace(root);
+    assert.ok(afterUnselect.every((p) => p.selected === false));
+
+    // Select first 2 products in batch
+    const selectResult = await batchUpdateProductSelection(root, [ids[0], ids[1]], true);
+    assert.equal(selectResult.success, true);
+    assert.equal(selectResult.updatedCount, 2);
+
+    // Verify selection state
+    const p0 = await getProduct(root, ids[0]);
+    const p1 = await getProduct(root, ids[1]);
+    const p2 = await getProduct(root, ids[2]);
+    assert.equal(p0.selected, true);
+    assert.equal(p1.selected, true);
+    assert.equal(p2.selected, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+

@@ -625,8 +625,61 @@ export async function updateProductState(
     updated_at: new Date().toISOString(),
   };
   await writeJsonAtomic(statePath, next);
-  invalidateDirectoryIndex(root);
   return getProduct(root, instanceId);
+}
+
+export async function batchUpdateProductSelection(
+  root: string,
+  instanceIds: string[],
+  selected: boolean,
+) {
+  if (!instanceIds.length) {
+    return { success: true, updatedCount: 0 };
+  }
+
+  const uniqueIds = Array.from(new Set(instanceIds));
+
+  const missing = uniqueIds.some(
+    (id) => !productDirectoryIndex.has(`${root}::${id}`),
+  );
+  if (missing) {
+    const directories = await collectProductDirectories(root);
+    for (const dir of directories) {
+      try {
+        const state = await readOrCreateState(dir);
+        productDirectoryIndex.set(`${root}::${state.instance_id}`, dir);
+      } catch {
+        // Ignore unreadable state files
+      }
+    }
+  }
+
+  let updatedCount = 0;
+  const now = new Date().toISOString();
+
+  await Promise.all(
+    uniqueIds.map(async (instanceId) => {
+      const directory = productDirectoryIndex.get(`${root}::${instanceId}`);
+      if (!directory) return;
+      const statePath = path.join(directory, ".etsy-studio.json");
+      try {
+        const state = await readOrCreateState(directory);
+        if (state.selected !== selected) {
+          const next: ProductStudioStateV1 = {
+            ...state,
+            selected,
+            updated_at: now,
+          };
+          await writeJsonAtomic(statePath, next);
+          updatedCount++;
+        }
+      } catch {
+        // Continue on error for individual products
+      }
+    }),
+  );
+
+  return { success: true, updatedCount };
 }
 
 export async function trashProduct(root: string, instanceId: string) {
