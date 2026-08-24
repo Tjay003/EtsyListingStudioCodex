@@ -10,7 +10,7 @@
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",
-    "test": "tsx --test tests/contracts.test.ts tests/studio-store.test.ts",
+    "test": "tsx --test tests/contracts.test.ts tests/studio-store.test.ts tests/product-lifecycle-and-export.test.ts tests/google-sheets-sync.test.ts",
     "jobs": "tsx scripts/job-lifecycle.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit"

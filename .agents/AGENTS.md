@@ -79,3 +79,25 @@ Avoid carrying forward:
 - Put detailed workflows in `docs/`.
 - Record only durable decisions and important checkpoints.
 - Never store API keys, tokens, private product data, or machine credentials in memory files.
+
+## Google Sheets Integration & Export Schema
+- Webhook URL is stored per-workspace in `.etsy-listing-studio/settings/copywriting.json` (`google_sheets_webhook_url`).
+- Standalone Apps Script template lives in `scripts/google-sheets-apps-script.js` and `lib/google-apps-script-template.ts`.
+- Documentation guide is located at `docs/GOOGLE_SHEETS_SETUP.md`.
+- **Multi-Shop Tab Routing**: Sync targets the sheet tab matching `shop_name` (falling back to `folder_name` / `workspace_name` / `Listings`). If the tab does not exist, the Apps Script auto-creates and formats it.
+- **In-Place Updates & Ordering**: Matches existing rows by Column 1 (`ID` / `item_number`) to update in place; inserts new numbers in sorted numerical position (e.g. `6` above `7`).
+- **Standard 13-Column Layout**:
+  1. `ID` (Text/number)
+  2. `Title` (Source/scraped title)
+  3. `Link` (Source product URL)
+  4. `Edited Photo Ready?` (Interactive checkbox / tickbox)
+  5. `Status` (Dropdown: `Draft`, `Approved`, `Published`, `Archived`, `Rejected`)
+  6. `Category` (Etsy taxonomy category)
+  7. `Etsy Title` (Generated SEO title)
+  8. `Description` (Story & supported specs)
+  9. `Tags` (13 comma-separated Etsy tags)
+  10. `Aliexpress Price` (Supplier price)
+  11. `Quotation Price` (Selling price)
+  12. `Folder Name` (Local folder name)
+  13. `Last Synced` (Timestamp)
+

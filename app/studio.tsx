@@ -15,8 +15,10 @@ import {
   Clock3,
   Copy,
   ExternalLink,
+  FileSpreadsheet,
   FolderOpen,
   HardDrive,
+  Hash,
   ImageIcon,
   ListChecks,
   LoaderCircle,
@@ -38,6 +40,7 @@ import type {
   WorkspaceCopywritingSettingsV1,
 } from "@/lib/contracts";
 import type { TrashEntryV1 } from "@/lib/product-store";
+import { GOOGLE_APPS_SCRIPT_TEMPLATE } from "@/lib/google-apps-script-template";
 
 type WorkspacePayload = {
   active_root: string | null;
@@ -83,16 +86,25 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+function pathBasename(pathString: string) {
+  const parts = pathString.split(/[/\\]/).filter(Boolean);
+  return parts[parts.length - 1] || pathString;
+}
+
 function shortFolder(value: string) {
   if (value.length <= 48) return value;
   return `…${value.slice(-47)}`;
 }
 
 function jobLabel(job: CopywritingJobV1) {
+  const folder = job.product.relative_folder
+    ? pathBasename(job.product.relative_folder)
+    : "";
+  const folderSuffix = folder ? ` (${folder})` : "";
   if (job.task.kind === "copywriting.tweak") {
-    return `Tweak ${job.task.fields.join(", ")}`;
+    return `Tweak ${job.task.fields.join(", ")}${folderSuffix}`;
   }
-  return "Create listing copy";
+  return `Create listing copy${folderSuffix}`;
 }
 
 function tagsText(result: CopywritingResultV1) {
@@ -114,6 +126,34 @@ function fullListingText(result: CopywritingResultV1) {
     result.listing.description,
     "",
   ].join("\n");
+}
+
+function readableValue(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(readableValue).filter(Boolean).join(", ");
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if ("message" in record) return readableValue(record.message);
+    if ("resolution" in record) return readableValue(record.resolution);
+    if ("value" in record) return readableValue(record.value);
+    return Object.entries(record)
+      .map(([key, entry]) => `${key}: ${readableValue(entry)}`)
+      .join("; ");
+  }
+  return String(value);
+}
+
+function conflictTitle(conflict: unknown): string {
+  if (conflict && typeof conflict === "object" && "field" in conflict) {
+    return `Source conflict: ${readableValue((conflict as { field?: unknown }).field)}`;
+  }
+  return "Source conflict";
 }
 
 function isImageSourcePath(value: string | null) {
@@ -153,8 +193,10 @@ export function Studio() {
   const [tweakInstruction, setTweakInstruction] = useState("");
   const [busy, setBusy] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [companionView, setCompanionView] = useState<CompanionView>("images");
+  const [scriptCopied, setScriptCopied] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
 
@@ -166,6 +208,17 @@ export function Studio() {
   const report = (cause: unknown) => {
     setToast("");
     setError(cause instanceof Error ? cause.message : "Something went wrong.");
+  };
+
+  const copyAppsScript = async () => {
+    try {
+      await navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_TEMPLATE);
+      setScriptCopied(true);
+      notify("Google Apps Script (v2) copied to clipboard!");
+      setTimeout(() => setScriptCopied(false), 2500);
+    } catch {
+      notify("Failed to copy script to clipboard.");
+    }
   };
 
   const loadWorkspace = useCallback(async () => {
@@ -286,6 +339,9 @@ export function Studio() {
     .filter(Boolean) as string[];
   const duplicateSelection =
     new Set(selectedSourceKeys).size !== selectedSourceKeys.length;
+  const unnumberedCount = products.filter(
+    (product) => !product.item_number || product.item_number === "",
+  ).length;
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -410,6 +466,48 @@ export function Studio() {
       ),
     );
     return data.product;
+  };
+
+  const syncToGoogleSheets = async (target: string | string[]) => {
+    try {
+      setBusy("sync-sheets");
+      const isArray = Array.isArray(target);
+      const instanceIds = isArray ? target : [target];
+      if (!instanceIds.length) {
+        notify("No products selected to sync.");
+        return;
+      }
+      const data = await requestJson<{ message?: string }>(
+        "/api/local/export/google-sheets",
+        {
+          method: "POST",
+          body: JSON.stringify(
+            isArray ? { instanceIds } : { instanceId: target },
+          ),
+        },
+      );
+      notify(data.message || "Synced listing(s) to Google Sheets successfully!");
+    } catch (cause) {
+      report(cause);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const handleAutoNumberAll = async () => {
+    try {
+      setBusy("auto-number");
+      const data = await requestJson<{ message?: string; assignedCount?: number }>(
+        "/api/local/products/auto-number",
+        { method: "POST" },
+      );
+      await loadProducts();
+      notify(data.message || "Assigned sequential item numbers successfully.");
+    } catch (cause) {
+      report(cause);
+    } finally {
+      setBusy("");
+    }
   };
 
   const toggleProduct = async (product: ProductSnapshotV1) => {
@@ -667,6 +765,15 @@ export function Studio() {
         </nav>
 
         <div className="top-actions">
+          <button
+            className="workspace-settings-btn"
+            onClick={() => setSettingsModalOpen(true)}
+            title="Workspace Settings & Google Sheets Webhook"
+            type="button"
+          >
+            <Settings2 size={13} />
+            <span>Workspace Settings</span>
+          </button>
           <span className="local-pill">
             <HardDrive size={13} /> Local only
           </span>
@@ -688,6 +795,22 @@ export function Studio() {
               <span className="eyebrow">Workspace</span>
               <h2>Product library</h2>
             </div>
+            {unnumberedCount > 0 && (
+              <button
+                className="auto-number-btn"
+                onClick={() => void handleAutoNumberAll()}
+                disabled={busy === "auto-number"}
+                title={`Assign sequential item numbers to ${unnumberedCount} unnumbered products`}
+                type="button"
+              >
+                {busy === "auto-number" ? (
+                  <LoaderCircle className="spin" size={11} />
+                ) : (
+                  <Hash size={11} />
+                )}
+                <span>Auto-number ({unnumberedCount})</span>
+              </button>
+            )}
           </div>
 
           <button
@@ -750,6 +873,10 @@ export function Studio() {
                 trash.map((entry) => (
                   <article className="trash-row" key={entry.instanceId}>
                     <div>
+                      <span className="product-folder-tag" title={entry.originalRelativeFolder}>
+                        <FolderOpen size={10} />
+                        <span>{pathBasename(entry.originalRelativeFolder)}</span>
+                      </span>
                       <strong>{entry.title}</strong>
                       <small>{entry.originalRelativeFolder}</small>
                     </div>
@@ -809,9 +936,32 @@ export function Studio() {
                         </span>
                       )}
                       <span className="product-copy">
-                        <strong>{product.title}</strong>
-                        <small>{product.collection}</small>
+                        <span className="product-folder-tag" title={product.relativeFolder}>
+                          <FolderOpen size={10} />
+                          <span>{product.folderName}</span>
+                        </span>
+                        <strong title={product.title}>{product.title}</strong>
+                        <small title={product.relativeFolder}>{product.relativeFolder}</small>
                         <span className="row-badges">
+                          {product.item_number != null && (
+                            <span className="mini-badge item-no">
+                              #{product.item_number}
+                            </span>
+                          )}
+                          <span
+                            className={`mini-badge photos-${
+                              product.edited_photos_ready ? "ready" : "pending"
+                            }`}
+                          >
+                            {product.edited_photos_ready
+                              ? "Photos Ready"
+                              : "Photos Pending"}
+                          </span>
+                          {product.published && (
+                            <span className="mini-badge published">
+                              Published
+                            </span>
+                          )}
                           {product.duplicateCount > 1 && (
                             <span className="mini-badge duplicate">
                               Duplicate
@@ -901,6 +1051,26 @@ export function Studio() {
                 >
                   Clear visible
                 </button>
+                {visibleSelectedCount > 0 && (
+                  <button
+                    className="bulk-sync-sheets-btn"
+                    disabled={busy.startsWith("bulk-") || busy === "sync-sheets"}
+                    onClick={() =>
+                      void syncToGoogleSheets(
+                        selectedProducts.map((p) => p.instanceId),
+                      )
+                    }
+                    type="button"
+                    title={`Sync ${visibleSelectedCount} selected products to Google Sheets`}
+                  >
+                    {busy === "sync-sheets" ? (
+                      <LoaderCircle className="spin" size={12} />
+                    ) : (
+                      <FileSpreadsheet size={12} />
+                    )}
+                    Sync ({visibleSelectedCount})
+                  </button>
+                )}
               </div>
             )}
           </footer>
@@ -909,9 +1079,11 @@ export function Studio() {
         {activeProduct ? (
           <section className="product-workspace">
             <div className="product-toolbar">
-              <span>
-                {activeProduct.collection} <span>/</span>{" "}
-                {activeProduct.folderName}
+              <span className="toolbar-folder-path" title={activeProduct.relativeFolder}>
+                <FolderOpen size={13} />
+                <strong>{activeProduct.folderName}</strong>
+                <span className="sep">/</span>
+                <span>{activeProduct.relativeFolder}</span>
               </span>
               <div>
                 <button
@@ -939,23 +1111,46 @@ export function Studio() {
 
             <header className="product-title">
               <div>
-                <span className="eyebrow">
-                  Source snapshot · {activeProduct.sourceStatus}
-                </span>
+                <div className="product-folder-banner">
+                  <span className="folder-pill-large" title={activeProduct.relativeFolder}>
+                    <FolderOpen size={12} />
+                    <span>Folder: <strong>{activeProduct.folderName}</strong></span>
+                  </span>
+                  <span className="eyebrow">
+                    Source snapshot · {activeProduct.sourceStatus}
+                  </span>
+                </div>
                 <h1>{activeProduct.title}</h1>
                 <p>
                   {activeProduct.price && (
                     <span>Supplier price {activeProduct.price}</span>
                   )}
                   {activeProduct.sourceUrl && (
-                    <a
-                      className="source-link"
-                      href={activeProduct.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open source <ExternalLink size={11} />
-                    </a>
+                    <span className="source-link-group">
+                      <a
+                        className="source-link"
+                        href={activeProduct.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open source <ExternalLink size={11} />
+                      </a>
+                      <button
+                        className="source-copy-btn"
+                        onClick={() =>
+                          void copyToClipboard(
+                            "Source URL",
+                            activeProduct.sourceUrl,
+                          )
+                        }
+                        type="button"
+                        title="Copy source URL"
+                        aria-label="Copy source URL"
+                      >
+                        <Copy size={11} />
+                        <span>Copy link</span>
+                      </button>
+                    </span>
                   )}
                 </p>
               </div>
@@ -971,6 +1166,97 @@ export function Studio() {
                 </span>
               </div>
             </header>
+
+            <div className="product-lifecycle-bar">
+              <div className="lifecycle-left">
+                <label className="lifecycle-input-group item-no-input-group" title="Item Number / SKU (e.g. 001)">
+                  <span>Item #</span>
+                  <input
+                    placeholder="001"
+                    style={{ width: "65px", fontWeight: 750, color: "var(--accent-primary, #4338ca)" }}
+                    value={activeProduct.item_number || ""}
+                    onChange={(event) =>
+                      void patchProduct(activeProduct.instanceId, {
+                        item_number: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <span
+                  className={`lifecycle-badge ${
+                    activeProduct.edited_photos_ready ? "is-ready" : "is-pending"
+                  }`}
+                >
+                  {activeProduct.edited_photos_ready ? (
+                    <BadgeCheck size={13} />
+                  ) : (
+                    <Clock3 size={13} />
+                  )}
+                  Edited Photos:{" "}
+                  <strong>
+                    {activeProduct.edited_photos_ready ? "Ready" : "Pending"}
+                  </strong>
+                </span>
+              </div>
+
+              <div className="lifecycle-controls">
+                <label className="lifecycle-input-group">
+                  <span>Quotation Price</span>
+                  <input
+                    placeholder="$0.00"
+                    value={activeProduct.quotation_price || ""}
+                    onChange={(event) =>
+                      void patchProduct(activeProduct.instanceId, {
+                        quotation_price: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <button
+                  className={`lifecycle-toggle-btn ${
+                    activeProduct.published ? "is-published" : ""
+                  }`}
+                  onClick={() =>
+                    void patchProduct(activeProduct.instanceId, {
+                      published: !activeProduct.published,
+                    })
+                  }
+                  type="button"
+                  title={
+                    activeProduct.published
+                      ? "Mark as unpublished"
+                      : "Mark as published to Etsy"
+                  }
+                >
+                  {activeProduct.published ? (
+                    <BadgeCheck size={14} />
+                  ) : (
+                    <CircleAlert size={14} />
+                  )}
+                  <span>
+                    {activeProduct.published
+                      ? "Published to Etsy"
+                      : "Draft (Unpublished)"}
+                  </span>
+                </button>
+
+                <button
+                  className="lifecycle-sync-btn"
+                  disabled={busy === "sync-sheets"}
+                  onClick={() => void syncToGoogleSheets(activeProduct.instanceId)}
+                  type="button"
+                  title="Sync this listing to Google Sheets via webhook"
+                >
+                  {busy === "sync-sheets" ? (
+                    <LoaderCircle className="spin" size={14} />
+                  ) : (
+                    <FileSpreadsheet size={14} />
+                  )}
+                  <span>Sync to Sheets</span>
+                </button>
+              </div>
+            </div>
 
             {centerView === "evidence" ? (
               <>
@@ -1116,6 +1402,13 @@ export function Studio() {
                   )}
 
                   <div className="fact-grid">
+                    <article className="fact-card" key="local-folder">
+                      <span>Local product folder</span>
+                      <strong>{activeProduct.folderName}</strong>
+                      <small>
+                        <FolderOpen size={12} /> {activeProduct.relativeFolder}
+                      </small>
+                    </article>
                     {activeProduct.specs.map((spec) => (
                       <article className="fact-card" key={spec.label}>
                         <span>{spec.label}</span>
@@ -1127,7 +1420,7 @@ export function Studio() {
                     ))}
                     {!activeProduct.specs.length && (
                       <div className="empty-facts">
-                        No structured supplier specifications were captured.
+                        No additional structured supplier specifications were captured.
                       </div>
                     )}
                   </div>
@@ -1419,6 +1712,21 @@ export function Studio() {
                           >
                             Category
                           </button>
+                          <button
+                            className="sync-sheets-btn"
+                            disabled={busy === "sync-sheets"}
+                            onClick={() =>
+                              void syncToGoogleSheets(activeProduct.instanceId)
+                            }
+                            type="button"
+                          >
+                            {busy === "sync-sheets" ? (
+                              <LoaderCircle className="spin" size={15} />
+                            ) : (
+                              <FileSpreadsheet size={15} />
+                            )}
+                            Sync to Sheets
+                          </button>
                         </div>
                       </section>
                     ) : (
@@ -1440,16 +1748,20 @@ export function Studio() {
                         <h3>
                           <ShieldAlert size={17} /> Review warnings
                         </h3>
-                        {activeResult.result.warnings.map((warning) => (
-                          <article key={`${warning.code}-${warning.message}`}>
-                            <strong>{warning.code.replaceAll("_", " ")}</strong>
-                            <p>{warning.message}</p>
+                        {activeResult.result.warnings.map((warning, i) => (
+                          <article key={`warning-${i}`}>
+                            <strong>
+                              {typeof warning === "object" && warning && "code" in warning
+                                ? readableValue(warning.code).replaceAll("_", " ")
+                                : "Review note"}
+                            </strong>
+                            <p>{readableValue(warning)}</p>
                           </article>
                         ))}
-                        {activeResult.result.conflicts.map((conflict) => (
-                          <article key={conflict}>
-                            <strong>Source conflict</strong>
-                            <p>{conflict}</p>
+                        {activeResult.result.conflicts.map((conflict, i) => (
+                          <article key={`conflict-${i}`}>
+                            <strong>{conflictTitle(conflict)}</strong>
+                            <p>{readableValue(conflict)}</p>
                           </article>
                         ))}
                       </section>
@@ -1460,14 +1772,12 @@ export function Studio() {
                         <ListChecks size={15} /> Evidence ledger ·{" "}
                         {activeResult.result.evidence.length} entries
                       </summary>
-                      {activeResult.result.evidence.map((entry) => (
-                        <article key={entry.id}>
-                          <span>{entry.kind.replaceAll("_", " ")}</span>
+                      {activeResult.result.evidence.map((entry, i) => (
+                        <article key={entry.id ?? `evidence-${i}`}>
+                          <span>{entry.kind?.replaceAll("_", " ") ?? "Unknown"}</span>
                           <strong>{entry.field}</strong>
                           <p>
-                            {Array.isArray(entry.value)
-                              ? entry.value.join(", ")
-                              : entry.value}
+                            {readableValue(entry.value)}
                           </p>
                           <small>
                             {entry.source_path ?? "No source path"}{" "}
@@ -1689,22 +1999,18 @@ export function Studio() {
                               </span>
                             </div>
                             <div className="companion-evidence-list">
-                              {activeResult.result.evidence.map((entry) => {
+                              {activeResult.result.evidence.map((entry, i) => {
                                 const evidenceImage = activeProduct?.images.find(
                                   (image) =>
                                     image.relativePath === entry.source_path,
                                 );
                                 return (
-                                  <article key={entry.id}>
+                                  <article key={entry.id ?? `evidence-companion-${i}`}>
                                     <span>
-                                      {entry.kind.replaceAll("_", " ")}
+                                      {entry.kind?.replaceAll("_", " ") ?? "Unknown"}
                                     </span>
                                     <strong>{entry.field}</strong>
-                                    <p>
-                                      {Array.isArray(entry.value)
-                                        ? entry.value.join(", ")
-                                        : entry.value}
-                                    </p>
+                                    <p>{readableValue(entry.value)}</p>
                                     <small>
                                       {entry.source_path ?? "No source path"}
                                       {entry.excerpt && ` - ${entry.excerpt}`}
@@ -2012,6 +2318,51 @@ export function Studio() {
                   />
                   <span>Append policy footer to every description</span>
                 </label>
+                <div className="settings-section-title">
+                  Integrations & Webhooks
+                  <small>Export approved listings automatically to Google Sheets.</small>
+                </div>
+                <label>
+                  <span>Google Sheets Webhook URL</span>
+                  <input
+                    placeholder="https://script.google.com/macros/s/... or Zapier/Make URL"
+                    value={copySettings.google_sheets_webhook_url || ""}
+                    onChange={(event) =>
+                      updateCopySetting(
+                        "google_sheets_webhook_url",
+                        event.target.value,
+                      )
+                    }
+                  />
+                  <small className="settings-field-hint">
+                    Endpoint receiving the formatted JSON payload when syncing listings.
+                  </small>
+                </label>
+                <div className="apps-script-helper-box">
+                  <div className="apps-script-helper-header">
+                    <div className="apps-script-helper-title">
+                      <FileSpreadsheet size={14} />
+                      <span>Apps Script Webhook (v2)</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="apps-script-copy-btn"
+                      onClick={() => void copyAppsScript()}
+                    >
+                      {scriptCopied ? <Check size={13} /> : <Copy size={13} />}
+                      <span>{scriptCopied ? "Copied Script!" : "Copy Script"}</span>
+                    </button>
+                  </div>
+                  <p className="apps-script-helper-desc">
+                    Routes listings to each shop&apos;s tab (creates new tabs automatically), updates existing rows in-place, and keeps items sorted in order (e.g. item 6 above 7).
+                  </p>
+                  <ol className="apps-script-steps">
+                    <li>Google Sheet &gt; <strong>Extensions &gt; Apps Script</strong>.</li>
+                    <li>Paste script &gt; <strong>Deploy &gt; New deployment &gt; Web app</strong>.</li>
+                    <li>Set <em>Execute as: Me</em> &amp; <em>Who has access: Anyone</em>.</li>
+                    <li>Paste the deployed URL above.</li>
+                  </ol>
+                </div>
                 <div className="settings-actions">
                   <button
                     className="settings-save"
@@ -2095,6 +2446,9 @@ export function Studio() {
                   <span className={`job-dot ${job.status}`} />
                   <div>
                     <strong>{jobLabel(job)}</strong>
+                    <small className="job-folder-path" title={job.product.relative_folder}>
+                      <FolderOpen size={10} /> {job.product.relative_folder}
+                    </small>
                     <small>{job.progress.message}</small>
                     <span className="progress-track">
                       <span style={{ width: `${job.progress.percent}%` }} />
@@ -2223,6 +2577,199 @@ export function Studio() {
                 </strong>
               )}
             </footer>
+          </section>
+        </div>
+      )}
+
+      {settingsModalOpen && copySettings && (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            className="workspace-dialog settings-modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-dialog-title"
+          >
+            <button
+              className="modal-close"
+              onClick={() => setSettingsModalOpen(false)}
+              aria-label="Close settings"
+              type="button"
+            >
+              <X size={17} />
+            </button>
+            <h2 id="settings-dialog-title">Workspace Settings & Integrations</h2>
+            <p>
+              Configure shop identity, AI copywriting guidelines, and your Google Sheets Webhook URL.
+            </p>
+
+            <div className="settings-fields" style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: 6 }}>
+              <div className="settings-section-title">
+                Integrations & Webhooks
+                <small>Export approved listings directly to Google Sheets.</small>
+              </div>
+              <label>
+                <span>Google Sheets Webhook URL</span>
+                <input
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={copySettings.google_sheets_webhook_url || ""}
+                  onChange={(event) =>
+                    updateCopySetting(
+                      "google_sheets_webhook_url",
+                      event.target.value,
+                    )
+                  }
+                />
+                <small className="settings-field-hint">
+                  Your deployed Google Apps Script Web App URL.
+                </small>
+              </label>
+
+              <div className="apps-script-helper-box">
+                <div className="apps-script-helper-header">
+                  <div className="apps-script-helper-title">
+                    <FileSpreadsheet size={15} />
+                    <span>Google Apps Script (v2 — Multi-Shop &amp; Auto-Sort)</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="apps-script-copy-btn"
+                    onClick={() => void copyAppsScript()}
+                  >
+                    {scriptCopied ? <Check size={13} /> : <Copy size={13} />}
+                    <span>{scriptCopied ? "Copied Script!" : "Copy Webhook Script"}</span>
+                  </button>
+                </div>
+                <p className="apps-script-helper-desc">
+                  Automatically routes listings to each shop&apos;s tab (or folder name), <strong>creates new tabs automatically</strong>, updates existing rows in-place, and keeps items strictly sorted (e.g. item 6 placed above 7).
+                </p>
+                <ol className="apps-script-steps">
+                  <li>In your Google Sheet, open <strong>Extensions &gt; Apps Script</strong>.</li>
+                  <li>Replace existing code with this script and click <strong>Deploy &gt; New deployment</strong>.</li>
+                  <li>Select type <strong>Web app</strong>, set <em>Execute as: Me</em> &amp; <em>Who has access: Anyone</em>.</li>
+                  <li>Copy your Web app URL and paste it into the field above.</li>
+                </ol>
+              </div>
+
+              <div className="settings-section-title">
+                Workspace Identity
+                <small>Brand name and voice applied to listings in this folder.</small>
+              </div>
+              <label>
+                <span>Shop name</span>
+                <input
+                  placeholder="e.g. Modern Craft Co"
+                  value={copySettings.shop_name}
+                  onChange={(event) =>
+                    updateCopySetting("shop_name", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                <span>Tagline</span>
+                <textarea
+                  placeholder="Optional brand tagline."
+                  value={copySettings.tagline}
+                  onChange={(event) =>
+                    updateCopySetting("tagline", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                <span>Brand profile</span>
+                <textarea
+                  placeholder="Describe your brand, target audience, and style."
+                  value={copySettings.brand_profile}
+                  onChange={(event) =>
+                    updateCopySetting("brand_profile", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                <span>Voice and vibe</span>
+                <textarea
+                  placeholder="e.g. Warm, artisanal, minimalist, persuasive."
+                  value={copySettings.voice}
+                  onChange={(event) =>
+                    updateCopySetting("voice", event.target.value)
+                  }
+                />
+              </label>
+
+              <div className="settings-section-title">
+                Copywriting Defaults & Policy
+              </div>
+              <label>
+                <span>Description structure</span>
+                <textarea
+                  value={copySettings.description_structure}
+                  onChange={(event) =>
+                    updateCopySetting(
+                      "description_structure",
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+              <label>
+                <span>Formatting rules</span>
+                <textarea
+                  value={copySettings.formatting_rules}
+                  onChange={(event) =>
+                    updateCopySetting("formatting_rules", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                <span>Policy footer</span>
+                <textarea
+                  value={copySettings.policy_footer}
+                  onChange={(event) =>
+                    updateCopySetting("policy_footer", event.target.value)
+                  }
+                />
+              </label>
+              <label className="toggle-line">
+                <input
+                  checked={copySettings.require_policy_footer}
+                  onChange={(event) =>
+                    updateCopySetting(
+                      "require_policy_footer",
+                      event.target.checked,
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span>Append policy footer to every description</span>
+              </label>
+            </div>
+
+            <div className="settings-actions" style={{ marginTop: 16 }}>
+              <button
+                className="settings-save"
+                disabled={busy === "settings"}
+                onClick={async () => {
+                  await saveCopySettings();
+                  setSettingsModalOpen(false);
+                }}
+                type="button"
+              >
+                {busy === "settings" ? (
+                  <LoaderCircle className="spin" size={15} />
+                ) : (
+                  <Check size={15} />
+                )}
+                Save Settings
+              </button>
+              <button
+                className="settings-reset"
+                disabled={busy === "settings"}
+                onClick={() => void resetCopySettings()}
+                type="button"
+              >
+                <RefreshCw size={14} />
+                Reset Defaults
+              </button>
+            </div>
           </section>
         </div>
       )}

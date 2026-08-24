@@ -29,6 +29,7 @@ export function defaultCopywritingSettings(
       "Do not include wholesale supplier jargon, shipping carrier terminology, platform names such as AliExpress, global transit lines, unsupported luxury claims, source-attribution phrases like according to supplier specifications, or unsupported custom, material, size, capacity, compatibility, safety, performance, package, or origin claims. Do not mention negative or non-selling specs such as not customized, folded: no, with rollers: no, no high-concerned chemical, or similar supplier fields unless the user explicitly asks.",
     policy_footer: "",
     require_policy_footer: false,
+    google_sheets_webhook_url: "",
   };
 }
 
@@ -68,6 +69,10 @@ export async function readCopywritingSettings(root: string) {
         typeof saved.require_policy_footer === "boolean"
           ? saved.require_policy_footer
           : defaults.require_policy_footer,
+      google_sheets_webhook_url: cleanText(
+        saved.google_sheets_webhook_url,
+        defaults.google_sheets_webhook_url ?? "",
+      ),
     } satisfies WorkspaceCopywritingSettingsV1;
   } catch {
     return defaultCopywritingSettings();
@@ -97,6 +102,10 @@ export async function saveCopywritingSettings(
       typeof patch.require_policy_footer === "boolean"
         ? patch.require_policy_footer
         : current.require_policy_footer,
+    google_sheets_webhook_url: cleanText(
+      patch.google_sheets_webhook_url,
+      current.google_sheets_webhook_url ?? "",
+    ),
     schema_version: STUDIO_SCHEMA_VERSION,
     updated_at: now(),
   };

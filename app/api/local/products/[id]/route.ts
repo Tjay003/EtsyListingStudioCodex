@@ -19,7 +19,19 @@ export async function PATCH(request: Request, context: Context) {
       rejected?: boolean;
       referenceImage?: string | null;
       notes?: string;
+      quotationPrice?: string | null;
+      quotation_price?: string | null;
+      published?: boolean;
+      itemNumber?: string | number | null;
+      item_number?: string | number | null;
     };
+    const quotationPrice =
+      body.quotation_price !== undefined
+        ? body.quotation_price
+        : body.quotationPrice;
+    const itemNumber =
+      body.item_number !== undefined ? body.item_number : body.itemNumber;
+
     const product = await updateProductState(root, id, {
       ...(typeof body.selected === "boolean"
         ? { selected: body.selected }
@@ -32,6 +44,17 @@ export async function PATCH(request: Request, context: Context) {
         ? { reference_image: body.referenceImage }
         : {}),
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(typeof quotationPrice === "string" || quotationPrice === null
+        ? { quotation_price: quotationPrice }
+        : {}),
+      ...(typeof body.published === "boolean"
+        ? { published: body.published }
+        : {}),
+      ...(typeof itemNumber === "string" ||
+      typeof itemNumber === "number" ||
+      itemNumber === null
+        ? { item_number: itemNumber }
+        : {}),
     });
     return NextResponse.json({ product });
   } catch (error) {

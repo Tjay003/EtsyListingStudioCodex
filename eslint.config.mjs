@@ -9,6 +9,9 @@ export default defineConfig([
     ".next/**",
     "dist/**",
     "build/**",
+    "extension/**",
+    ".tmp/**",
+    ".job-drafts/**",
     "next-env.d.ts",
   ]),
 ]);

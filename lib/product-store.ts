@@ -126,6 +126,71 @@ async function collectImages(directory: string) {
   return files;
 }
 
+export async function checkEditedPhotosReady(productDirectory: string): Promise<boolean> {
+  for (const dirName of ["edited", "edited_images", "outputs"]) {
+    const candidateDir = path.join(productDirectory, dirName);
+    if (await exists(candidateDir)) {
+      const files = await collectImages(candidateDir);
+      if (files.length > 0) return true;
+    }
+  }
+  return false;
+}
+
+export function extractItemNumber(text: string): number | null {
+  if (!text) return null;
+  const bracketMatch = text.match(/^\[(\d+)\]/);
+  if (bracketMatch) return parseInt(bracketMatch[1], 10);
+
+  const parenMatch = text.match(/^\((\d+)\)/);
+  if (parenMatch) return parseInt(parenMatch[1], 10);
+
+  const prefixMatch = text.match(/^(\d+)[\s_.-]/);
+  if (prefixMatch) return parseInt(prefixMatch[1], 10);
+
+  if (/^\d+$/.test(text.trim())) return parseInt(text.trim(), 10);
+
+  return null;
+}
+
+export function formatItemNumber(itemNumber: number | string | null | undefined): string {
+  if (itemNumber == null || itemNumber === "") return "";
+  const num = typeof itemNumber === "number" ? itemNumber : parseInt(String(itemNumber), 10);
+  if (isNaN(num)) return String(itemNumber);
+  return String(num).padStart(3, "0");
+}
+
+export async function getNextItemNumber(root: string): Promise<number> {
+  const directories = await collectProductDirectories(root);
+  let highest = 0;
+
+  for (const dir of directories) {
+    const folderName = path.basename(dir);
+    const fromFolder = extractItemNumber(folderName);
+    if (fromFolder && fromFolder > highest) {
+      highest = fromFolder;
+    }
+
+    try {
+      const statePath = path.join(dir, ".etsy-studio.json");
+      const state = await readJson<ProductStudioStateV1>(statePath);
+      if (state.item_number != null) {
+        const fromState =
+          typeof state.item_number === "number"
+            ? state.item_number
+            : extractItemNumber(String(state.item_number));
+        if (fromState && fromState > highest) {
+          highest = fromState;
+        }
+      }
+    } catch {
+      // Incomplete state sidecars are safely ignored
+    }
+  }
+
+  return highest + 1;
+}
+
 function defaultState(now = new Date()): ProductStudioStateV1 {
   const timestamp = now.toISOString();
   return {
@@ -137,6 +202,9 @@ function defaultState(now = new Date()): ProductStudioStateV1 {
     rejected: false,
     reference_image: null,
     notes: "",
+    item_number: null,
+    quotation_price: null,
+    published: false,
   };
 }
 
@@ -272,7 +340,7 @@ async function buildSnapshot(root: string, productDirectory: string) {
       alt: item.alt || `${title} ${item.role} image`,
       title: item.title,
       sourceUrl: item.sourceUrl,
-      imageUrl: `/api/local/images/${encodeURIComponent(state.instance_id)}/${item.role}/${index}`,
+      imageUrl: `/api/local/product-images/${encodeURIComponent(state.instance_id)}/${item.role}/${index}`,
     });
   }
 
@@ -367,6 +435,15 @@ async function buildSnapshot(root: string, productDirectory: string) {
     legacyListing: record(metadata.etsy_listing),
     legacyFacts: record(metadata.product_facts),
     results,
+    item_number:
+      state.item_number != null
+        ? state.item_number
+        : extractItemNumber(folderName) != null
+          ? formatItemNumber(extractItemNumber(folderName))
+          : null,
+    quotation_price: state.quotation_price ?? null,
+    published: Boolean(state.published),
+    edited_photos_ready: await checkEditedPhotosReady(productDirectory),
   };
   return snapshot;
 }
@@ -423,6 +500,28 @@ export async function scanWorkspace(root: string) {
   );
 }
 
+export async function autoNumberUnassignedProducts(root: string): Promise<number> {
+  const snapshots = await scanWorkspace(root);
+  let highest = 0;
+  for (const s of snapshots) {
+    if (s.item_number != null && s.item_number !== "") {
+      const num = typeof s.item_number === "number" ? s.item_number : parseInt(String(s.item_number), 10);
+      if (!isNaN(num) && num > highest) highest = num;
+    }
+  }
+
+  let assignedCount = 0;
+  for (const s of snapshots) {
+    if (s.item_number == null || s.item_number === "") {
+      highest++;
+      const formatted = formatItemNumber(highest);
+      await updateProductState(root, s.instanceId, { item_number: formatted });
+      assignedCount++;
+    }
+  }
+  return assignedCount;
+}
+
 export async function getProduct(root: string, instanceId: string) {
   const products = await scanWorkspace(root);
   const product = products.find((item) => item.instanceId === instanceId);
@@ -444,7 +543,13 @@ export async function updateProductState(
   patch: Partial<
     Pick<
       ProductStudioStateV1,
-      "selected" | "rejected" | "reference_image" | "notes"
+      | "selected"
+      | "rejected"
+      | "reference_image"
+      | "notes"
+      | "quotation_price"
+      | "published"
+      | "item_number"
     >
   >,
 ) {
@@ -473,6 +578,18 @@ export async function updateProductState(
       ? { reference_image: patch.reference_image }
       : {}),
     ...(typeof patch.notes === "string" ? { notes: patch.notes } : {}),
+    ...(typeof patch.quotation_price === "string" ||
+    patch.quotation_price === null
+      ? { quotation_price: patch.quotation_price }
+      : {}),
+    ...(typeof patch.published === "boolean"
+      ? { published: patch.published }
+      : {}),
+    ...(typeof patch.item_number === "string" ||
+    typeof patch.item_number === "number" ||
+    patch.item_number === null
+      ? { item_number: patch.item_number }
+      : {}),
     updated_at: new Date().toISOString(),
   };
   await writeJsonAtomic(statePath, next);

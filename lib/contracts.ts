@@ -24,6 +24,9 @@ export interface ProductStudioStateV1 {
   rejected: boolean;
   reference_image: string | null;
   notes: string;
+  item_number?: string | number | null;
+  quotation_price?: string | null;
+  published?: boolean;
 }
 
 export interface ProductImageV1 {
@@ -84,6 +87,10 @@ export interface ProductSnapshotV1 {
   legacyListing: Record<string, unknown> | null;
   legacyFacts: Record<string, unknown> | null;
   results: ProductResultSummaryV1[];
+  item_number?: string | number | null;
+  quotation_price?: string | null;
+  published?: boolean;
+  edited_photos_ready?: boolean;
 }
 
 export interface JobProgressV1 {
@@ -211,6 +218,7 @@ export interface WorkspaceCopywritingSettingsV1 {
   banned_language: string;
   policy_footer: string;
   require_policy_footer: boolean;
+  google_sheets_webhook_url?: string;
 }
 
 export interface LocalStudioConfigV1 {
