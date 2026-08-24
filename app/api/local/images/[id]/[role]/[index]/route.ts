@@ -6,6 +6,8 @@ import type { ImageRole } from "@/lib/contracts";
 import { apiError, requireActiveWorkspace } from "@/lib/api-utils";
 import { resolveProductImage } from "@/lib/product-store";
 
+sharp.cache(false);
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -54,7 +56,8 @@ export async function GET(
       try {
         body = await readFile(cachePath);
       } catch {
-        body = await sharp(resolved.filePath, { failOn: "none" })
+        const fileBuffer = await readFile(resolved.filePath);
+        body = await sharp(fileBuffer, { failOn: "none" })
           .rotate()
           .resize({
             width: size,

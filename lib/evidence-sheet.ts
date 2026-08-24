@@ -1,8 +1,10 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { resolveExistingInside, writeJsonAtomic } from "./fs-utils";
 import { readJobSourceContext } from "./job-store";
+
+sharp.cache(false);
 
 export async function prepareEvidenceSheet(root: string, jobId: string) {
   const context = await readJobSourceContext(root, jobId);
@@ -27,7 +29,8 @@ export async function prepareEvidenceSheet(root: string, jobId: string) {
       context.productDirectory,
       image.relativePath,
     );
-    const input = await sharp(source)
+    const sourceBuffer = await readFile(source);
+    const input = await sharp(sourceBuffer)
       .rotate()
       .resize(tileSize - 12, tileSize - 12, {
         fit: "contain",
