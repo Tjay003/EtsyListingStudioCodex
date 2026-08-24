@@ -302,6 +302,35 @@ export function Studio() {
     );
   }, [activeProduct?.instanceId]);
 
+  useEffect(() => {
+    if (!activeProduct) return;
+    const toPreload = activeProduct.images
+      .filter((img) => img.exists)
+      .slice(0, 8);
+    for (const img of toPreload) {
+      const thumb = new Image();
+      thumb.src = sizedImageUrl(img, 120);
+      if (
+        img.role === "main" ||
+        img.relativePath === activeProduct.referenceImage
+      ) {
+        const hero = new Image();
+        hero.src = sizedImageUrl(img, 960);
+      }
+    }
+  }, [activeProduct?.instanceId]);
+
+  const prefetchProduct = useCallback((product: ProductSnapshotV1) => {
+    const cover =
+      product.images.find(
+        (img) => img.relativePath === product.referenceImage && img.exists,
+      ) ?? product.images.find((img) => img.role === "main" && img.exists);
+    if (cover) {
+      const hero = new Image();
+      hero.src = sizedImageUrl(cover, 960);
+    }
+  }, []);
+
   const loadResults = useCallback(async (instanceId: string) => {
     const data = await requestJson<{ results: ResultBundle[] }>(
       `/api/local/products/${encodeURIComponent(instanceId)}/results`,
@@ -920,6 +949,7 @@ export function Studio() {
                     <button
                       className="product-select"
                       onClick={() => setActiveId(product.instanceId)}
+                      onMouseEnter={() => prefetchProduct(product)}
                       data-testid={`product-${product.instanceId}`}
                       type="button"
                     >

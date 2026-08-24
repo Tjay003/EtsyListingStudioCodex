@@ -471,12 +471,28 @@ export async function ensureWorkspaceStructure(root: string) {
   return control;
 }
 
+const productDirectoryIndex = new Map<string, string>();
+
+export function invalidateDirectoryIndex(root?: string) {
+  if (root) {
+    for (const key of productDirectoryIndex.keys()) {
+      if (key.startsWith(`${root}::`)) {
+        productDirectoryIndex.delete(key);
+      }
+    }
+  } else {
+    productDirectoryIndex.clear();
+  }
+}
+
 export async function scanWorkspace(root: string) {
   await ensureWorkspaceStructure(root);
   const directories = await collectProductDirectories(root);
   const snapshots: ProductSnapshotV1[] = [];
   for (const directory of directories) {
-    snapshots.push(await buildSnapshot(root, directory));
+    const snapshot = await buildSnapshot(root, directory);
+    snapshots.push(snapshot);
+    productDirectoryIndex.set(`${root}::${snapshot.instanceId}`, directory);
   }
 
   const groups = new Map<string, ProductSnapshotV1[]>();
@@ -525,19 +541,32 @@ export async function autoNumberUnassignedProducts(root: string): Promise<number
   return assignedCount;
 }
 
-export async function getProduct(root: string, instanceId: string) {
+export async function getProductDirectory(root: string, instanceId: string) {
+  const cachedDir = productDirectoryIndex.get(`${root}::${instanceId}`);
+  if (cachedDir) {
+    try {
+      const statePath = path.join(cachedDir, ".etsy-studio.json");
+      const state = await readJson<ProductStudioStateV1>(statePath);
+      if (state.instance_id === instanceId) {
+        const product = await buildSnapshot(root, cachedDir);
+        return { product, directory: cachedDir };
+      }
+    } catch {
+      productDirectoryIndex.delete(`${root}::${instanceId}`);
+    }
+  }
+
   const products = await scanWorkspace(root);
   const product = products.find((item) => item.instanceId === instanceId);
   if (!product) throw new Error("Product not found in the active workspace.");
-  return product;
+  const directory = await resolveExistingInside(root, product.relativeFolder);
+  productDirectoryIndex.set(`${root}::${instanceId}`, directory);
+  return { product, directory };
 }
 
-export async function getProductDirectory(root: string, instanceId: string) {
-  const product = await getProduct(root, instanceId);
-  return {
-    product,
-    directory: await resolveExistingInside(root, product.relativeFolder),
-  };
+export async function getProduct(root: string, instanceId: string) {
+  const { product } = await getProductDirectory(root, instanceId);
+  return product;
 }
 
 export async function updateProductState(
@@ -596,6 +625,7 @@ export async function updateProductState(
     updated_at: new Date().toISOString(),
   };
   await writeJsonAtomic(statePath, next);
+  invalidateDirectoryIndex(root);
   return getProduct(root, instanceId);
 }
 
@@ -619,6 +649,7 @@ export async function trashProduct(root: string, instanceId: string) {
     trashFolder,
   };
   await writeJsonAtomic(path.join(destination, "trash.json"), entry);
+  invalidateDirectoryIndex(root);
   return entry;
 }
 
@@ -660,6 +691,7 @@ export async function restoreProduct(root: string, instanceId: string) {
   }
   await mkdir(path.dirname(destination), { recursive: true });
   await rename(source, destination);
+  invalidateDirectoryIndex(root);
   return getProduct(root, instanceId);
 }
 
