@@ -152,7 +152,7 @@ function sanitizeTabName(raw: unknown): string {
 }
 
 function getOrCreateSheetForShop(spreadsheet: SpreadsheetMock, item: Record<string, unknown>): SheetMock {
-  const rawName = item.sheet_name || item.target_sheet || item.shop_name || item.folder_name || item.workspace_name;
+  const rawName = item.sheet_name || item.target_sheet || item.shop_name || item.workspace_name || item.folder_name || "Listings";
   const tabName = sanitizeTabName(rawName);
 
   const existing = spreadsheet.getSheetByName(tabName);
@@ -436,12 +436,13 @@ test("Google Sheets sync: multi-shop tab routing and auto-creating tabs", () => 
     item_number: "001",
     title: "Item in Shop 2",
     shop_name: "",
-    folder_name: "shopTwoFolder",
+    workspace_name: "PhoneCases",
+    folder_name: "[001] Case",
   });
-  assert.ok(spreadsheet.getSheetByName("shopTwoFolder"));
+  assert.ok(spreadsheet.getSheetByName("PhoneCases"));
 
   const sheet1 = spreadsheet.getSheetByName("testingFolder1")!;
-  const sheet2 = spreadsheet.getSheetByName("shopTwoFolder")!;
+  const sheet2 = spreadsheet.getSheetByName("PhoneCases")!;
 
   assert.equal(sheet1.rows[1][1], "Item in Shop 1");
   assert.equal(sheet2.rows[1][1], "Item in Shop 2");

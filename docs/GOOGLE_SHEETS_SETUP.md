@@ -23,7 +23,7 @@ This guide explains how to connect Etsy Listing Studio to Google Sheets with aut
 
 ### Step 2: Paste the Webhook Script
 1. Delete any sample code inside the Apps Script code editor.
-2. Copy the complete script from [scripts/google-sheets-apps-script.js](file:///C:/Users/Tyrone%20James%20Bacolod/OneDrive/Desktop/All%20Apps/Bacolod%20FIles/PROJECTS/EtsyListingStudioCodex/scripts/google-sheets-apps-script.js) (or click **Copy Webhook Script** in the Studio Settings modal).
+2. Copy the complete script from [scripts/google-sheets-apps-script.js](../scripts/google-sheets-apps-script.js) (or click **Copy Webhook Script** in the Studio Settings modal).
 3. Paste it into the editor and click the **Save** icon (diskette).
 
 ### Step 3: Deploy as Web App

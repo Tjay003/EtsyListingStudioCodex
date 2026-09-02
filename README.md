@@ -1,256 +1,207 @@
 # Etsy Listing Studio
 
-Etsy Listing Studio is a Windows-first, local-only Next.js app for reviewing scraped product folders, queueing Etsy copywriting work, and reviewing versioned AI-assisted listing results.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.13.0-green.svg)](https://nodejs.org)
+[![Platform](https://img.shields.io/badge/Platform-Windows--First-0078D6.svg)](#prerequisites)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org)
 
-The app is designed around a human operator plus a file-aware AI agent. The webpage prepares structured local jobs. The agent processes those jobs only when explicitly asked.
+**Etsy Listing Studio** is a Windows-first, local-only product listing workbench designed for e-commerce operators, dropshippers, and handmade sellers. It bridges scraped or supplier product folders with local AI agents (such as Codex, Claude, or local LLMs) to generate evidence-backed, high-converting Etsy listings—without cloud lock-in or leaking proprietary data.
 
-## Current Scope
+---
 
-In scope:
+## 🌟 Key Highlights
 
-- Select one local product root at a time.
-- Recursively discover product folders containing `metadata.json`.
-- Review product images, source metadata, specs, variations, source links, and existing outputs.
-- Choose a reference image and add product notes.
-- Queue copywriting jobs as versioned JSON manifests.
-- Process queued jobs through the deterministic local job lifecycle.
-- Save immutable copywriting versions for review, approval, rejection, and targeted field tweaks.
-- Keep workspace-specific copywriting voice/settings inside the selected product root.
+- **🔒 100% Local & Private**: All product images, supplier metadata, generated listings, and workspace configs remain strictly on your local disk.
+- **🧠 Evidence-Led Copywriting**: Differentiates supplier specifications, printed image facts, and visual observations from unknowns. Never hallucinates product dimensions or unsupported claims.
+- **⚡ Operator-Triggered Job Lifecycle**: The browser UI prepares structured JSON job manifests; AI agents process queued jobs on explicit operator demand via CLI.
+- **📊 13-Column Google Sheets Integration**: Real-time sync with automatic multi-shop tab routing, auto-tab creation, in-place row updates, and in-order numerical sorting (e.g., `#6` places above `#7`).
+- **🔄 Versioned Output & Targeted Tweaks**: Generates immutable listing versions (`v0001`, `v0002`) and allows targeted single-field refinements while preserving the master evidence ledger.
+- **🛡️ Immutable Source Guarantees**: Source supplier folders and `metadata.json` files are strictly read-only and never modified or overwritten.
 
-Out of scope for the current milestone:
+---
 
-- Image generation.
-- Etsy publishing.
-- Cloud storage.
-- Automatic background invocation of Codex or another AI agent from the browser UI.
-- Modifying scraper-owned source files.
+## 🏗️ Architecture & Workflow
 
-## Prerequisites
+```mermaid
+flowchart LR
+    A[Scraped Product Folder\nmetadata.json + Images] --> B[Etsy Listing Studio UI\nLocal Next.js App]
+    B --> C[Workspace Job Queue\n.etsy-listing-studio/jobs/queued]
+    C --> D[AI Agent / Codex CLI\npnpm jobs -- claim-next]
+    D --> E[Immutable Version Output\nstudio_outputs/copywriting/v0001]
+    E --> B
+    B --> F[Review, Approve & Export\nGoogle Sheets Webhook Sync]
+```
 
-| Requirement | Version | Notes |
+### 1. Product Ingestion & Discovery
+The studio recursively discovers product folders containing a `metadata.json` file inside your chosen workspace root, parsing source titles, prices, image sets (main, variation, description), and technical specifications.
+
+### 2. Job Queueing
+In the web UI, select products, inspect images, assign custom product notes or reference images, and queue a copywriting batch. The studio creates versioned JSON manifests under `.etsy-listing-studio/jobs/queued/`.
+
+### 3. Agent Job Processing
+Your local AI agent (e.g. Codex) claims jobs using the deterministic lifecycle CLI:
+```powershell
+pnpm jobs -- claim-next
+pnpm jobs -- complete <job-id> <draft-json-path>
+```
+The processor reads local image evidence and supplier metadata, generates customer-facing storytelling, SEO titles, 13 tags, and taxonomy categories, then writes immutable results to `studio_outputs/copywriting/vNNNN/`.
+
+### 4. Review, Tweak & Google Sheets Sync
+Review outputs side-by-side with original photos, approve or reject listings, trigger targeted field tweaks, and sync directly to Google Sheets with 1-click multi-shop routing.
+
+---
+
+## 📋 Prerequisites
+
+| Requirement | Minimum Version | Notes |
 |---|---|---|
-| **Windows** | 10 or 11 | Windows-first; macOS/Linux untested |
-| **Node.js** | ≥ 22.13.0 | [nodejs.org](https://nodejs.org) |
-| **pnpm** | 11.9.0 | `npm install -g pnpm` |
-| **Codex** (Google DeepMind desktop app) | latest | Required for AI job processing |
+| **Operating System** | Windows 10 / 11 | Windows-first file paths and lock handling |
+| **Node.js** | `>= 22.13.0` | Recommended LTS from [nodejs.org](https://nodejs.org) |
+| **pnpm** | `11.x` (or `npm`) | `npm install -g pnpm` |
+| **AI Agent (Optional)** | Codex / Claude Code / CLI | For automated job queue processing |
 
-> **What is a "product root"?** This app reads product folders that contain a `metadata.json` file. If you don't have a scraper that generates these, you can create test folders manually — see [Local Data Layout](#local-data-layout) below for the expected structure.
+---
 
-## Quick Start
+## 🚀 Quick Start
 
-**Option A — Double-click launcher (easiest):**
-
-```
-Start Etsy Listing Studio.cmd
-```
-
-It installs dependencies when needed, starts the server on `http://127.0.0.1:3000`, and opens the app automatically.
-
-**Option B — Command line:**
+### 1. Clone & Install
 
 ```powershell
 git clone https://github.com/Tjay003/EtsyListingStudioCodex.git
 cd EtsyListingStudioCodex
 pnpm install
+```
+
+### 2. Launch the Studio
+
+**Option A — 1-Click Windows Launcher:**
+Double-click `Start Etsy Listing Studio.cmd` in the root folder. It automatically verifies dependencies, starts the local server on `http://127.0.0.1:3000`, and opens your default browser.
+
+**Option B — Terminal:**
+```powershell
 pnpm dev
 ```
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000) in your browser.
 
-Then open `http://127.0.0.1:3000` in your browser.
+---
 
-**Production-style local run:**
+## 📁 Local Data Layout
+
+Source product folders are treated as immutable evidence:
+
+```text
+my-products-workspace/
+├── [001] ceramic-coffee-mug/
+│   ├── metadata.json              # Scraped supplier details & specs
+│   ├── main_images/               # Primary gallery images
+│   ├── variation_images/          # Variant photos (colors, sizes)
+│   ├── description_images/        # Infographics & detail shots
+│   ├── .etsy-studio.json          # Studio metadata (reference image, notes)
+│   └── studio_outputs/            # Generated outputs
+│       └── copywriting/
+│           ├── v0001/
+│           │   ├── listing.json   # Full structured output
+│           │   ├── listing.txt    # Clean text representation
+│           │   └── review.json    # Approval status & review notes
+│           └── v0002/
+└── .etsy-listing-studio/          # Workspace control data
+    ├── jobs/                      # queued / processing / completed / failed
+    ├── batches/                   # Batch manifests
+    ├── settings/
+    │   └── copywriting.json       # Workspace voice & webhook settings
+    └── trash/                     # Safe soft-delete location
+```
+
+---
+
+## 📊 Google Sheets Multi-Shop Sync
+
+Etsy Listing Studio includes an Apps Script webhook template supporting **multi-shop tab routing**, **in-place row deduplication**, and **in-order numerical placement**.
+
+### Setup in 4 Steps:
+1. Open your Google Spreadsheet and go to **Extensions** > **Apps Script**.
+2. Paste the script from [`scripts/google-sheets-apps-script.js`](scripts/google-sheets-apps-script.js).
+3. Click **Deploy** > **New deployment** > Select type: **Web app** > Set access to **Anyone** > Deploy.
+4. Paste the Web App URL into **Studio Settings** under **Google Sheets Webhook URL**.
+
+### 13-Column Listing Schema:
+| # | Column Name | Description |
+|---|---|---|
+| 1 | `ID` | Numerical / folder ID (e.g. `001`) |
+| 2 | `Title` | Original source/scraped product title |
+| 3 | `Link` | Supplier source URL (AliExpress, etc.) |
+| 4 | `Edited Photo Ready?` | Interactive checkbox for photo status |
+| 5 | `Status` | Dropdown (`Draft`, `Approved`, `Published`, `Archived`, `Rejected`) |
+| 6 | `Category` | Etsy taxonomy path |
+| 7 | `Etsy Title` | 140-char SEO optimized title |
+| 8 | `Description` | Narrative story + supported specs |
+| 9 | `Tags` | 13 comma-separated Etsy tags |
+| 10 | `Aliexpress Price` | Raw supplier price |
+| 11 | `Quotation Price` | Target retail price |
+| 12 | `Folder Name` | Local folder name |
+| 13 | `Last Synced` | Timestamp of last sync |
+
+For comprehensive documentation, see [`docs/GOOGLE_SHEETS_SETUP.md`](docs/GOOGLE_SHEETS_SETUP.md).
+
+---
+
+## 🤖 Processing Jobs with AI Agents
+
+When jobs are queued in the UI, you can process them using the CLI:
 
 ```powershell
-pnpm build
-pnpm start
-```
-
-Both `dev` and `start` bind to `127.0.0.1`.
-
-## Using with Codex
-
-1. Open this repository as a **workspace** in the Codex desktop app.
-2. Start the Studio and select a product root.
-3. Queue copywriting jobs in the UI.
-4. Tell Codex: **"Process my queued jobs"** (or type `$process-etsy-jobs`).
-5. Codex reads the local job files, writes results, and the Studio picks them up automatically.
-
-The Codex skills in `.agents/skills/` are auto-discovered when this repo is your active workspace.
-
-## Operator Workflow
-
-1. Select the product root with the Windows folder picker, paste a path, or choose a recent workspace.
-2. Review recursively discovered products, images, specs, variations, source warnings, and Legacy data.
-3. Pick a reference image, add notes, select products, and queue a copywriting batch.
-4. In Codex or another file-aware agent, invoke `$process-etsy-jobs` or say `Process my queued jobs.`
-5. Watch job progress in the app.
-6. Review results, copy fields, approve, reject, delete, or queue a targeted tweak.
-
-The webpage does not directly call the current Codex conversation. It writes local job files and watches status/result files.
-
-## Important Files For Agents
-
-Read these first before making architectural or workflow changes:
-
-- `.agents/AGENTS.md` - durable project instructions for AI coding agents.
-- `docs/BUILD_BRIEF.md` - product brief, milestone scope, storage layout, copywriting standard, UI direction, and future image-work boundaries.
-- `.agents/skills/process-etsy-jobs/SKILL.md` - required local job-processing workflow.
-- `.agents/skills/process-etsy-jobs/references/etsy-search-copywriting.md` - Etsy copywriting guidance used by the processor.
-- `lib/contracts.ts` - authoritative TypeScript contracts for products, jobs, results, warnings, evidence, and review state.
-- `scripts/job-lifecycle.ts` - CLI entrypoint for deterministic job transitions.
-
-If another AI tool is used, give it access to both this repository and the active product root. The active root is stored in `.etsy-studio.local.json`.
-
-## Local Data Layout
-
-Source product folders are owned by the scraper and should be treated as immutable evidence.
-
-```text
-product-folder/
-  metadata.json
-  main_images/
-  description_images/
-  variation_images/
-  .etsy-studio.json
-  studio_outputs/
-    copywriting/
-      v0001/
-        listing.json
-        listing.txt
-        review.json
-```
-
-Workspace control data lives under the selected product root:
-
-```text
-.etsy-listing-studio/
-  jobs/
-    queued/
-    processing/
-    completed/
-    failed/
-    cancelled/
-  batches/
-  cache/
-  logs/
-  settings/
-    copywriting.json
-  staging/
-  trash/
-```
-
-Machine-local active workspace config lives in this repo:
-
-```text
-.etsy-studio.local.json
-```
-
-Do not commit machine-local workspace paths or real product data unless the user explicitly asks.
-
-## Source Rules
-
-- Never modify `metadata.json`.
-- Never modify source images.
-- Never silently replace existing generated results.
-- Store new copywriting output as a new immutable version under `studio_outputs/copywriting/vNNNN/`.
-- Store product review state separately from immutable result versions.
-- Move deleted products to Studio trash instead of permanently deleting them.
-- Ignore Studio-owned directories during product discovery.
-- Validate requested paths against the active root and reject traversal or symlink escapes.
-
-## Copywriting Rules
-
-Copywriting must be evidence-led. Use supplier metadata first, then the selected reference image and contact sheet, then only original images needed to resolve missing or conflicting facts.
-
-Do:
-
-- Distinguish supplier facts, printed image facts, visual observations, conflicts, and unknowns.
-- Write one clear Etsy-ready title within 140 characters, normally under 15 words.
-- Produce up to 13 useful tags, each 20 characters or fewer.
-- Write a natural, scene-led opening followed by supported, scannable details.
-- Keep buyer-facing copy customer-ready. Do not include source-attribution phrases such as `according to supplier specifications`, internal evidence caveats, or non-selling supplier fields such as `not customized`, `folded: no`, `with rollers: no`, or `no high-concerned chemical`.
-- Choose a defensible category.
-- Leave price as `null` for manual entry.
-- Record warnings, omissions, conflicts, inspected images, and evidence in the result.
-- Append the active workspace policy footer exactly when enabled.
-
-Do not:
-
-- Invent materials, measurements, capacity, compatibility, safety, performance, package contents, origin, or care claims.
-- Put internal evidence caveats into customer-facing copy.
-- Mention supplier platforms or wholesale/logistics language in buyer-facing copy.
-- Use image generation for this milestone.
-- Make paid API calls from tests.
-
-Workspace copywriting settings are stored at:
-
-```text
-<active-root>/.etsy-listing-studio/settings/copywriting.json
-```
-
-Switching roots switches the saved brand voice, storytelling style, formatting rules, banned language, SEO preferences, and policy footer. Fresh roots start unbranded: universal formatting, SEO, and safety rules are present, but shop identity and policy footer fields stay blank until saved for that workspace.
-
-## Processing Jobs
-
-Use the lifecycle CLI. Do not move job files manually unless repairing corruption with explicit user approval.
-
-Common commands:
-
-```powershell
+# List all active jobs across states
 pnpm jobs -- list
+
+# Claim the next queued job
 pnpm jobs -- claim-next
+
+# Get full context (metadata, settings, notes, images) for a job
 pnpm jobs -- context <job-id>
-pnpm jobs -- settings <job-id>
-pnpm jobs -- prepare-evidence <job-id>
+
+# Report step progress
 pnpm jobs -- progress <job-id> <stage> <percent> "<message>"
-pnpm jobs -- check-cancel <job-id>
-pnpm jobs -- complete <job-id> <draft-json-path>
-pnpm jobs -- fail <job-id> "<message>"
+
+# Complete a job with draft JSON
+pnpm jobs -- complete <job-id> <path-to-draft.json>
+
+# Fail or cancel a job
+pnpm jobs -- fail <job-id> "<error-message>"
 pnpm jobs -- cancelled <job-id>
 ```
 
-Processing expectations:
+---
 
-- Claim one job at a time.
-- Check cancellation between stages.
-- Preserve completed sibling jobs if another child fails.
-- For targeted tweaks, reuse the parent evidence ledger and do not rescan images.
-- Run completion through `pnpm jobs -- complete`; it performs validation and writes immutable outputs.
-
-## Development Commands
+## 🛠️ Developer & Quality Commands
 
 ```powershell
+# Run test suite
 pnpm test
+
+# Run TypeScript static analysis
 pnpm typecheck
+
+# Run ESLint validation
 pnpm lint
+
+# Production build
 pnpm build
+
+# Start production server
+pnpm start
 ```
 
-Use focused tests for scanner, identity, job lifecycle, trash, copywriting contracts, and UI behavior. Tests should use fixtures and deterministic fake results, not real scraper folders.
+---
 
-## Design Direction
+## 🔒 Safety, Privacy & Design Principles
 
-The UI should stay restrained and operational:
+1. **Zero Cloud Lock-in**: No mandatory accounts, external databases, or third-party cloud trackers.
+2. **Untrusted Workspace Security**: All file operations resolve within the active workspace root and reject path traversal (`../`) and symlink escapes.
+3. **Immutable Originals**: Scraper files and original images are never altered or deleted. Deleted items are safely quarantined in `.etsy-listing-studio/trash/`.
+4. **Evidence Transparency**: Generated listings record full evidence ledgers, including inspected images, supplier claims, and unresolved omissions.
 
-- Neo-minimal, dense, crisp, and workspace-like.
-- Neutral surfaces with a controlled accent.
-- No emoji icons.
-- Use Lucide icons only where they clarify an action or status.
-- Keep the handcrafted CSS system; Tailwind is not required.
-- Avoid decorative gradients, oversized cards, marketing hero sections, and ornamental AI motifs.
+---
 
-## Legacy Reference
+## 📄 License
 
-The previous project is available for ideas only:
-
-```text
-..\EtsyListingsAutomation
-```
-
-Useful reference point:
-
-```text
-branch: codex/copywriting-refactor-v2
-commit: 66658f8
-```
-
-Do not copy the old app wholesale. Reuse ideas selectively and keep this project centered on local files, explicit job processing, evidence-led copywriting, and versioned review.
+This project is licensed under the [MIT License](LICENSE).

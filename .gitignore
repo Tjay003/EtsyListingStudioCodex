@@ -6,9 +6,14 @@
 /logs/
 /.job-drafts/
 /.tmp/
+.etsy-listing-studio/
+.staging/
+.system_generated/
+scratch/
 
 # Machine-local AI/API directories
 /.openai/
+/.gemini/
 
 # Secrets and local environments
 .env
@@ -38,3 +43,4 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+

@@ -120,7 +120,7 @@ function sanitizeTabName(raw) {
 }
 
 function getOrCreateSheetForShop(spreadsheet, item) {
-  var rawName = item.sheet_name || item.target_sheet || item.shop_name || item.folder_name || item.workspace_name;
+  var rawName = item.sheet_name || item.target_sheet || item.shop_name || item.workspace_name || item.folder_name || "Listings";
   var tabName = sanitizeTabName(rawName);
 
   var sheet = spreadsheet.getSheetByName(tabName);
