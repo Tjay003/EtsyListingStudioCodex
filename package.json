@@ -7,7 +7,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 3000",
+    "dev": "next dev --webpack -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",
     "test": "tsx --test tests/contracts.test.ts tests/studio-store.test.ts tests/product-lifecycle-and-export.test.ts tests/google-sheets-sync.test.ts",

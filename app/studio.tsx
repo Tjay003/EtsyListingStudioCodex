@@ -80,9 +80,23 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
-  const body = (await response.json()) as T & { error?: string };
+  const contentType = response.headers.get("content-type") || "";
+  let body: (T & { error?: string }) | null = null;
+  if (contentType.includes("application/json")) {
+    try {
+      body = (await response.json()) as T & { error?: string };
+    } catch {
+      // ignore json parse error on malformed json
+    }
+  }
   if (!response.ok) {
-    throw new Error(body.error || "The local operation failed.");
+    const errorText =
+      body?.error ||
+      `Request failed with status ${response.status} (${response.statusText || "Error"})`;
+    throw new Error(errorText);
+  }
+  if (!body) {
+    throw new Error("Invalid response format received from local studio server.");
   }
   return body;
 }
